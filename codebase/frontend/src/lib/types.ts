@@ -123,7 +123,75 @@ export type DiscordState = {
 };
 
 export type ChatResponse = {
-  message: AssistantMessage;
-  candidate: MemoryCandidate | null;
-  provider: string;
+    message: AssistantMessage;
+    candidate: MemoryCandidate | null;
+    provider: string;
+    tool_calls: ContextToolCall[];
+};
+
+export type ContextToolCall = {
+  name: string;
+  arguments: Record<string, unknown>;
+  reason: string;
+  result_count: number;
+};
+
+export type AdminOverview = {
+  context_total: number;
+  context_enabled: number;
+  context_by_type: Record<string, number>;
+  context_by_scope: Record<string, number>;
+  memory_total: number;
+  memory_by_scope: Record<string, number>;
+  rag_reachable: boolean | null;
+  rag_indexed_scopes: string[];
+  admin_auth_required: boolean;
+};
+
+export type AdminContextItem = {
+  source_id: string;
+  source_type: "message" | "episode" | "painpoint" | "lesson";
+  source_kind: string;
+  title: string;
+  channel_key: string;
+  scope_key: string;
+  day_code: string | null;
+  page_number: number | null;
+  created_at: string | null;
+  content: string;
+  is_enabled: boolean;
+};
+
+export type AdminContextList = {
+  items: AdminContextItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type ContextSource = {
+  source_id: string;
+  source_type: "message" | "episode" | "painpoint" | "lesson";
+  channel_key: string;
+  scope_key: string;
+  content: string;
+  created_at: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type ContextPlanResponse = {
+  query: string;
+  filters: Record<string, unknown>;
+  notes: string[];
+  tool_calls: ContextToolCall[];
+  sources: ContextSource[];
+};
+
+export type AdminMemoryInput = {
+  scope_type: ScopeType;
+  scope_id: string;
+  kind: MemoryKind;
+  content: string;
+  evidence?: string[];
+  created_by?: string;
 };

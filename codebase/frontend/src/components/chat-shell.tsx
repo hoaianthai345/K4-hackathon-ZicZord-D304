@@ -18,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 import {
   confirmCandidate,
@@ -59,6 +60,27 @@ function initials(name: string) {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <div className="message-markdown">
+      <ReactMarkdown
+        skipHtml
+        components={{
+          a({ href, children }) {
+            return (
+              <a href={href} target="_blank" rel="noreferrer">
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function LoadingState() {
@@ -157,9 +179,13 @@ function AssistantTurn({ message }: { message: AssistantMessage }) {
           {assistant && <span className="bot-badge">APP</span>}
           <time className="message-time">vừa xong</time>
         </div>
-        <p className="mt-1 whitespace-pre-line text-sm leading-6 text-ink/88">
-          {message.content}
-        </p>
+        {assistant ? (
+          <MarkdownMessage content={message.content} />
+        ) : (
+          <p className="mt-1 whitespace-pre-line text-sm leading-6 text-ink/88">
+            {message.content}
+          </p>
+        )}
         {message.citations.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {message.citations.map((citation) => (

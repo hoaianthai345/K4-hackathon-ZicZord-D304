@@ -1,27 +1,60 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+import hmac
+from typing import Literal
+from urllib.parse import quote
+from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Response, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 
 from .apify_gateway import ApifyGateway, normalize_apify_item
 from .chat_service import ChatService
+from .catchup_service import CatchupService
 from .config import settings
+from .context_tools import ContextToolService
+from .database import Database
 from .hindsight_gateway import HindsightGateway
 from .llm_gateway import LLMGateway
+from .rag_anything_gateway import RAGAnythingGateway
 from .schemas import (
+    AdminContextList,
+    AdminContextUpdate,
+    AdminMemoryCreate,
+    AdminMemoryUpdate,
+    AdminOverview,
     ApifyIngestRequest,
     ApifyIngestResponse,
     ChatRequest,
     ChatResponse,
+    CatchupBrief,
+    CatchupRequest,
+    ChecklistItem,
+    ChecklistUpdate,
     CommunityUser,
+    ContextPlanRequest,
+    ContextPlanResponse,
+    ContextToolCall,
     DiscordMessage,
     DiscordState,
     HealthResponse,
     IngestionStatus,
     Memory,
     MemoryUpdate,
+    RAGQueryRequest,
+    RAGQueryResponse,
+    RAGSource,
+    RAGSourceRecord,
 )
 from .scopes import (
     allowed_scope_keys,
@@ -39,12 +72,22 @@ store = JsonStore(settings.state_path)
 hindsight = HindsightGateway(settings)
 apify = ApifyGateway(settings)
 llm = LLMGateway(settings)
-chat_service = ChatService(store, hindsight, llm)
+database = Database(settings)
+rag = RAGAnythingGateway(settings)
+context_tools = ContextToolService(database)
+chat_service = ChatService(store, hindsight, llm, rag, context_tools)
+catchup_service = CatchupService(store)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings.state_path.parent.mkdir(parents=True, exist_ok=True)
+    if database.configured:
+        try:
+            await database.ensure_schema()
+        except Exception:
+            # Keep the existing demo API available while PostgreSQL is recovering.
+            pass
     yield
 
 
@@ -52,14 +95,14 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description=(
-        "Discord learning copilot with authorization-aware user, team, group, "
-        "classroom and cohort memory."
+        "Discord catch-up copilot that turns authorized messages into decisions, "
+        "tasks, deadlines and blockers with verifiable citations."
     ),
     lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=settings.frontend_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,10 +123,31 @@ def _permission_error() -> HTTPException:
     )
 
 
+def require_admin(
+    request: Request,
+    x_admin_key: str | None = Header(default=None),
+) -> None:
+    if not settings.admin_api_key:
+        if request.url.hostname in {"localhost", "127.0.0.1", "testserver"}:
+            return
+        raise HTTPException(
+            status_code=503,
+            detail="Admin public đang tắt. Hãy cấu hình ADMIN_API_KEY ở backend.",
+        )
+    if not x_admin_key or not hmac.compare_digest(x_admin_key, settings.admin_api_key):
+        raise HTTPException(
+            status_code=401,
+            detail="Admin key không hợp lệ.",
+            headers={"WWW-Authenticate": "X-Admin-Key"},
+        )
+
+
 @app.get("/health", response_model=HealthResponse)
-def health() -> HealthResponse:
+async def health() -> HealthResponse:
     provider = hindsight.status()
     ai = llm.status()
+    database_status = await database.status()
+    rag_status = await rag.status()
     return HealthResponse(
         status="ok",
         service=settings.app_name,
@@ -93,6 +157,13 @@ def health() -> HealthResponse:
         ai_provider=ai.name,
         ai_reachable=ai.reachable,
         ingestion_mode="apify" if apify.configured else "demo-snapshot",
+        database_reachable=database_status.reachable,
+        database_messages=database_status.messages,
+        database_episodes=database_status.episodes,
+        database_painpoints=database_status.painpoints,
+        database_learning_contexts=database_status.learning_contexts,
+        rag_reachable=rag_status["reachable"],
+        rag_indexed_scopes=rag_status["indexed_scopes"],
     )
 
 
@@ -134,13 +205,15 @@ def discord_state(user_id: str = Query(default="U01862")) -> DiscordState:
         candidates=candidates,
         assistant_messages=snapshot["assistant_messages"].get(user_id, []),
         suggested_prompts=[
-            "Tóm tắt nội dung bài giảng ngày hôm qua",
-            "Team mình đang chốt gì và còn blocker nào?",
-            "Mentor G10 dặn gì trước buổi check-in?",
-            "Tóm tắt kênh chat chính hôm nay",
+            "Quyết định nào mới được chốt?",
+            "Việc nào đang giao cho mình?",
+            "Deadline và blocker hiện tại là gì?",
+            "Mentor G10 có thông báo quan trọng nào?",
+            "Giảng viên giải thích Transformer và attention như thế nào?",
         ],
         provider=llm.status().name,
         ingestion=IngestionStatus.model_validate(snapshot["ingestion"]),
+        checklist=snapshot["checklists"].get(user_id, []),
     )
 
 
@@ -157,6 +230,372 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     if channel and not can_access_channel(user, channel):
         raise HTTPException(status_code=403, detail="Bạn không có quyền dùng channel này.")
     return await chat_service.chat(user, payload.message, payload.channel_id)
+
+
+@app.post("/api/rag/query", response_model=RAGQueryResponse)
+async def query_rag(payload: RAGQueryRequest) -> RAGQueryResponse:
+    user = get_user(payload.user_id)
+    result = await rag.query(user, payload.query)
+    if not result:
+        raise HTTPException(
+            status_code=503,
+            detail="RAG-Anything chưa sẵn sàng hoặc chưa index scope của user.",
+        )
+    sources = [
+        RAGSource(
+            source_id=source.source_id,
+            source_type=source.source_type,
+            channel_key=source.channel_key,
+            label=source.label,
+            citation_url=(
+                f"{settings.api_public_url}/api/rag/sources/"
+                f"{quote(source.source_type, safe='')}/"
+                f"{quote(source.source_id, safe='')}?"
+                f"user_id={quote(user.id, safe='')}"
+            ),
+        )
+        for source in result.sources
+    ]
+    return RAGQueryResponse(
+        query=payload.query,
+        answer=result.answer,
+        provider=result.provider,
+        scopes_queried=result.scopes_queried,
+        sources=sources,
+    )
+
+
+@app.get(
+    "/api/rag/sources/{source_type}/{source_id}",
+    response_model=RAGSourceRecord,
+)
+async def rag_source(
+    source_type: Literal["message", "episode", "painpoint", "lesson"],
+    source_id: str,
+    user_id: str = Query(default="U01862"),
+) -> RAGSourceRecord:
+    user = get_user(user_id)
+    record = await database.source(source_type, source_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Không tìm thấy RAG source.")
+    allowed = {
+        f"{scope_type}:{scope_id}"
+        for scope_type, scope_id in allowed_scope_keys(user)
+    }
+    if record["scope_key"] not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="Tài khoản này không có quyền xem source đó.",
+        )
+    return RAGSourceRecord.model_validate(record)
+
+
+@app.get("/api/admin/overview", response_model=AdminOverview)
+async def admin_overview(
+    _: None = Depends(require_admin),
+) -> AdminOverview:
+    context = await database.admin_context_overview()
+    snapshot = store.snapshot()
+    memory_by_scope: dict[str, int] = {}
+    for memory in snapshot["memories"]:
+        scope_key = f"{memory['scope_type']}:{memory['scope_id']}"
+        memory_by_scope[scope_key] = memory_by_scope.get(scope_key, 0) + 1
+    rag_status = await rag.status()
+    return AdminOverview(
+        context_total=context["total"],
+        context_enabled=context["enabled"],
+        context_by_type={
+            key: int(value) for key, value in context["by_type"].items()
+        },
+        context_by_scope=context["by_scope"],
+        memory_total=len(snapshot["memories"]),
+        memory_by_scope=memory_by_scope,
+        rag_reachable=rag_status["reachable"],
+        rag_indexed_scopes=rag_status["indexed_scopes"],
+        admin_auth_required=bool(settings.admin_api_key),
+    )
+
+
+@app.get("/api/admin/context", response_model=AdminContextList)
+async def admin_context(
+    search: str = Query(default="", max_length=200),
+    source_type: Literal["message", "episode", "painpoint", "lesson"] | None = None,
+    scope_key: str | None = Query(default=None, max_length=100),
+    enabled: bool | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    _: None = Depends(require_admin),
+) -> AdminContextList:
+    items, total = await database.admin_list_context(
+        search=search,
+        source_type=source_type,
+        scope_key=scope_key,
+        enabled=enabled,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminContextList(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@app.patch(
+    "/api/admin/context/{source_type}/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def admin_update_context(
+    source_type: Literal["message", "episode", "painpoint", "lesson"],
+    source_id: str,
+    payload: AdminContextUpdate,
+    _: None = Depends(require_admin),
+) -> Response:
+    updated = await database.admin_set_context_enabled(
+        source_type,
+        source_id,
+        payload.is_enabled,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy context record.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/api/admin/context/plan", response_model=ContextPlanResponse)
+async def admin_context_plan(
+    payload: ContextPlanRequest,
+    _: None = Depends(require_admin),
+) -> ContextPlanResponse:
+    user = get_user(payload.user_id)
+    retrieval = await context_tools.retrieve(
+        user,
+        payload.query,
+        payload.channel_id,
+    )
+    sources = []
+    for source in retrieval.sources:
+        metadata = {
+            **(source.get("metadata") or {}),
+            "source_kind": source.get("source_kind"),
+            "source_ref": source.get("source_ref"),
+            "title": source.get("title"),
+            "day_code": source.get("day_code"),
+            "sequence_number": source.get("sequence_number"),
+            "page_number": source.get("page_number"),
+        }
+        sources.append(
+            RAGSourceRecord(
+                source_id=str(source["source_id"]),
+                source_type=source["source_type"],
+                channel_key=str(source["channel_key"]),
+                scope_key=str(source["scope_key"]),
+                content=str(source["content"]),
+                created_at=source.get("created_at"),
+                metadata={key: value for key, value in metadata.items() if value is not None},
+            )
+        )
+    return ContextPlanResponse(
+        query=payload.query,
+        filters={
+            "channels": retrieval.plan.channel_keys,
+            "day_codes": retrieval.plan.day_codes,
+            "source_kinds": retrieval.plan.source_kinds,
+            "start_time": (
+                retrieval.plan.start_time.isoformat()
+                if retrieval.plan.start_time
+                else None
+            ),
+            "end_time": (
+                retrieval.plan.end_time.isoformat()
+                if retrieval.plan.end_time
+                else None
+            ),
+            "time_label": retrieval.plan.time_label,
+            "current_date": retrieval.temporal_context.get("current_date"),
+            "requested_date": retrieval.temporal_context.get("requested_date"),
+            "context_start": retrieval.temporal_context.get("context_start"),
+            "context_end": retrieval.temporal_context.get("context_end"),
+            "lesson_intent": retrieval.plan.lesson_intent,
+            "use_rag": retrieval.plan.use_rag,
+            "use_memory": retrieval.plan.use_memory,
+        },
+        notes=retrieval.plan.notes,
+        tool_calls=[
+            ContextToolCall(
+                name=call.name,
+                arguments=call.arguments,
+                reason=call.reason,
+                result_count=call.result_count,
+            )
+            for call in retrieval.calls
+        ],
+        sources=sources,
+    )
+
+
+@app.post("/api/admin/context/reindex")
+async def admin_reindex_context(
+    _: None = Depends(require_admin),
+) -> dict:
+    try:
+        return await rag.index()
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/memories", response_model=list[Memory])
+def admin_memories(
+    scope_type: str | None = Query(default=None, max_length=20),
+    scope_id: str | None = Query(default=None, max_length=80),
+    _: None = Depends(require_admin),
+) -> list[Memory]:
+    values = store.snapshot()["memories"]
+    return [
+        Memory.model_validate(memory)
+        for memory in values
+        if (scope_type is None or memory["scope_type"] == scope_type)
+        and (scope_id is None or memory["scope_id"] == scope_id)
+    ]
+
+
+@app.post("/api/admin/memories", response_model=Memory)
+async def admin_create_memory(
+    payload: AdminMemoryCreate,
+    _: None = Depends(require_admin),
+) -> Memory:
+    timestamp = datetime.now(UTC)
+    memory = Memory(
+        id=f"mem-admin-{uuid4().hex[:10]}",
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+        kind=payload.kind,
+        content=payload.content.strip(),
+        evidence=payload.evidence,
+        created_by=payload.created_by,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+    def operation(state: dict):
+        state["memories"].append(memory.model_dump(mode="json"))
+        return True
+
+    store.mutate(operation)
+    await hindsight.retain_confirmed(memory)
+    return memory
+
+
+@app.patch("/api/admin/memories/{memory_id}", response_model=Memory)
+async def admin_update_memory(
+    memory_id: str,
+    payload: AdminMemoryUpdate,
+    _: None = Depends(require_admin),
+) -> Memory:
+    updated: dict = {}
+
+    def operation(state: dict):
+        memory = next(
+            (item for item in state["memories"] if item["id"] == memory_id),
+            None,
+        )
+        if not memory:
+            raise KeyError(memory_id)
+        changes = payload.model_dump(exclude_none=True)
+        for key, value in changes.items():
+            memory[key] = value.strip() if key == "content" else value
+        memory["updated_at"] = datetime.now(UTC).isoformat()
+        updated.update(memory)
+        return True
+
+    try:
+        store.mutate(operation)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy memory.") from exc
+    memory = Memory.model_validate(updated)
+    await hindsight.retain_confirmed(memory)
+    return memory
+
+
+@app.delete(
+    "/api/admin/memories/{memory_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def admin_delete_memory(
+    memory_id: str,
+    _: None = Depends(require_admin),
+) -> Response:
+    deleted: dict = {}
+
+    def operation(state: dict):
+        memory = next(
+            (item for item in state["memories"] if item["id"] == memory_id),
+            None,
+        )
+        if not memory:
+            raise KeyError(memory_id)
+        deleted.update(memory)
+        state["memories"] = [
+            item for item in state["memories"] if item["id"] != memory_id
+        ]
+        return True
+
+    try:
+        store.mutate(operation)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy memory.") from exc
+    await hindsight.delete_confirmed(Memory.model_validate(deleted))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/api/catch-up", response_model=CatchupBrief)
+def create_catchup(payload: CatchupRequest) -> CatchupBrief:
+    user = get_user(payload.user_id)
+    return catchup_service.generate(user, payload.window_hours)
+
+
+@app.post(
+    "/api/catch-up/{brief_id}/checklist",
+    response_model=list[ChecklistItem],
+)
+def create_checklist(
+    brief_id: str,
+    user_id: str = Query(default="U01862"),
+) -> list[ChecklistItem]:
+    user = get_user(user_id)
+    try:
+        return catchup_service.create_checklist(brief_id, user)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy catch-up brief.") from exc
+
+
+@app.post(
+    "/api/catch-up/{brief_id}/acknowledge",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def acknowledge_catchup(
+    brief_id: str,
+    user_id: str = Query(default="U01862"),
+) -> Response:
+    user = get_user(user_id)
+    try:
+        catchup_service.acknowledge(brief_id, user)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy catch-up brief.") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.patch("/api/checklist/{item_id}", response_model=ChecklistItem)
+def update_checklist_item(
+    item_id: str,
+    payload: ChecklistUpdate,
+    user_id: str = Query(default="U01862"),
+) -> ChecklistItem:
+    user = get_user(user_id)
+    try:
+        return catchup_service.update_checklist(item_id, payload.completed, user)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy checklist item.") from exc
 
 
 @app.post("/api/memory-candidates/{candidate_id}/confirm", response_model=Memory)

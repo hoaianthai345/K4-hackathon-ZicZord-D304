@@ -1,6 +1,6 @@
-# AI SPEC: Kute Memory, Discord Learning Copilot
+# AI SPEC: Kute, Discord Catch-up Copilot
 
-Hướng đề xuất: **Trợ lý học viên trong Discord**
+Hướng đề xuất: **Discord Catch-up Copilot**
 Loại: **Tính năng mới**
 Trạng thái: **MVP scope đã đổi ngày 30/07/2026**
 
@@ -21,7 +21,7 @@ Thái Hoài An, U01862
 
 Core job:
 
-> Khi quay lại Discord sau một ngày học và làm project, giúp tôi biết lớp, team và mentor đã chốt gì mà không phải đọc lại mọi channel.
+> Khi quay lại Discord sau một ngày, giúp tôi biết ngay có gì thay đổi, mình cần làm gì và vấn đề nào đang chặn team—không phải đọc lại nhiều channel.
 
 Pain quan sát trực tiếp từ ảnh Discord:
 
@@ -33,7 +33,7 @@ Pain quan sát trực tiếp từ ảnh Discord:
 
 ## 2. Lát cắt MVP
 
-> Một học viên hỏi Trợ lý Kute trong Discord; hệ thống tính các scope được phép từ membership, truy xuất message và memory liên quan, rồi trả summary có permalink nguồn.
+> Một học viên bấm “Bắt kịp 24 giờ qua”; hệ thống tính scope từ membership, đọc đúng channel rồi trả brief có quyết định, task, deadline, blocker và permalink nguồn.
 
 Một quyết định AI trung tâm:
 
@@ -45,11 +45,13 @@ authenticated user
 → chọn evidence nào được phép dùng để trả lời
 ```
 
-Ba câu hỏi demo:
+Happy path demo:
 
-1. `Tóm tắt nội dung bài giảng ngày hôm qua`
-2. `Team mình đang chốt gì và còn blocker nào?`
-3. `Mentor G10 dặn gì trước buổi check-in?`
+1. Bấm `Bắt kịp trong 24 giờ qua`.
+2. Xem brief theo bốn loại thông tin.
+3. Mở nguồn Discord của một ý.
+4. Bấm `Tạo checklist hôm nay`.
+5. Đánh dấu một việc hoàn tất hoặc hỏi tiếp.
 
 ## 3. Data model và quyền
 
@@ -117,6 +119,17 @@ Adapter chuẩn hóa các Actor output khác nhau về:
 
 MVP chạy được không cần token bằng snapshot synthetic. Live mode chỉ cần `APIFY_TOKEN` và `APIFY_DATASET_ID`.
 
+### Dataset processing không phá huỷ
+
+File Excel gốc chỉ đọc. Pipeline tạo ba dataset dẫn xuất:
+
+- `messages_clean`: NFC, whitespace, search lowercase, model text đã redact, cờ noise/intent, attachment và reaction chuẩn hóa.
+- `issue_episodes`: anchor → context topic-aware → answer/resolution.
+- `painpoint_summary`: vector cluster theo `canonical_problem + product_area + entities`.
+
+Dot/greeting không vào model context nhưng không ngắt episode. Acknowledgement được
+giữ để nhận biết resolved signal. Report giống nhau từ người khác nhau không bị xóa.
+
 ### Hindsight
 
 - Source: `vectorize-io/hindsight`
@@ -126,14 +139,57 @@ MVP chạy được không cần token bằng snapshot synthetic. Live mode ch�
 - Tag canonical bắt buộc: `scope_type`, `scope_id`, `layer:canonical`, `status:confirmed`.
 - JSON store là source of truth của demo; Hindsight là memory engine tùy chọn.
 
+### PostgreSQL + RAG-Anything
+
+- PostgreSQL giữ toàn bộ `messages_clean`, `issue_episodes` và
+  `painpoint_summary`, bao gồm provenance tới file/sheet/row.
+- RAG dùng repo chính thức `HKUDS/RAG-Anything`, direct content insertion và
+  LightRAG hybrid retrieval.
+- Chỉ `content_model` đã redact được embed/index; raw text không rời audit DB.
+- FastAPI tính allow-list scope ở server. RAG response mang source ID để mở
+  evidence đã redact và kiểm tra quyền lần hai.
+- Chat UI không đổi: có index thì dùng RAG thật, chưa có thì fallback demo cũ.
+
+### Learning context pack
+
+- Mount read-only transcript, slide PDF và tutor chatlog từ `data/vlearn-pack`.
+- Loader tạo 2.019 record `learning_context`: 700 transcript segment, 58 slide
+  page và 1.261 tutor Q&A.
+- Search bài học dùng PostgreSQL FTS/trigram cục bộ; không bulk-embed pack ra
+  provider ngoài.
+- Chỉ excerpt `content_model` đã redact được gửi tới LLM; citation quay về đúng
+  transcript code, slide page hoặc Q&A record.
+
+### Retrieval plan
+
+```text
+lesson intent
+  -> local learning search
+
+explicit channel or time window
+  -> exact Discord SQL search
+  -> never broaden to another channel when empty
+
+generic recurring problem
+  -> RAG-Anything hybrid search
+
+all paths
+  -> confirmed memory recall within server-computed scopes
+```
+
+Time expression dùng timezone `Asia/Ho_Chi_Minh`. Alias “team mình”, “mentor”,
+“hỏi đáp”, “lý thuyết” và “lab” được map sang channel thực của user từ
+membership.
+
 ## 5. Product flow
 
 ### Happy path
 
 1. Học viên mở `#🤖-gõ-commands`.
-2. Hỏi về bài giảng, team hoặc mentor.
-3. Bot trả tối đa ba ý, mỗi ý có citation về message Discord.
-4. Panel bên phải hiển thị scope và confirmed memory được dùng.
+2. Bấm `Bắt kịp trong 24 giờ qua`.
+3. Bot trả decision, task, deadline, blocker và announcement có citation.
+4. Học viên tạo checklist, đánh dấu đã biết hoặc hỏi thêm.
+5. Panel bên phải ưu tiên checklist; scope và memory lùi xuống trust layer.
 
 ### Xem channel nguồn
 
@@ -163,7 +219,8 @@ MVP chạy được không cần token bằng snapshot synthetic. Live mode ch�
 3. Không thay thế Discord search cho mọi use case.
 4. Không tự biến mọi tin nhắn thành memory.
 5. Không phân tích cảm xúc, năng lực hay hiệu suất cá nhân.
-6. Không xây dashboard quản trị đầy đủ.
+6. Không xây analytics dashboard lớn; admin MVP chỉ quản lý context, memory và
+   xem retrieval trace.
 
 ## 7. Trust và privacy
 
@@ -184,6 +241,12 @@ MVP đạt khi:
 - Proposed memory không xuất hiện trong canonical recall.
 - User không có quyền không thể confirm, sửa hoặc xóa memory.
 - Landing, chat, API và Docker build chạy bằng một lệnh.
+- File raw dataset không đổi checksum sau pipeline.
+- Dot/greeting không vào episode context cuối; acknowledgement không bị xóa.
+- Brief 24 giờ tạo checklist và lưu completed state.
+- Learning loader chạy lặp lại vẫn giữ đúng 2.019 record.
+- Query có time/channel không được tự mở rộng sang channel khác khi không có kết quả.
+- Context tắt ở admin không xuất hiện trong search hoặc source endpoint.
 
 ## 9. Changelog
 
@@ -193,3 +256,9 @@ MVP đạt khi:
 | 30/07/2026 | Mở rộng memory từ per-user sang 5 scope | Phản ánh đúng cấu trúc user, team, group mentor, phòng học và cohort |
 | 30/07/2026 | Thêm Apify Dataset adapter | Có đường ingest Discord snapshot thay được Actor |
 | 30/07/2026 | Bank-per-scope và server-side authorization | Chặn recall sai team ở boundary mạnh hơn |
+| 30/07/2026 | Đổi định vị thành Discord Catch-up Copilot | Job rõ hơn: quay lại, bắt kịp và hành động |
+| 30/07/2026 | Thêm non-destructive dataset pipeline | Giữ raw, tách episode theo topic và aggregate pain point |
+| 30/07/2026 | Thêm brief 24h và checklist | Biến summary thành workflow có bước tiếp theo |
+| 30/07/2026 | Thêm PostgreSQL + HKUDS/RAG-Anything | Truy vấn dữ liệu thật, có provenance và citation kiểm tra quyền |
+| 30/07/2026 | Thêm learning context và admin | Hỏi được bài học thật, quản lý context/memory và kiểm tra retrieval plan |
+| 30/07/2026 | Thêm strict time/channel routing | Ngăn semantic retrieval lấy đúng chủ đề nhưng sai channel hoặc thời điểm |

@@ -1,8 +1,12 @@
 from datetime import UTC, datetime, timedelta
+import re
+from urllib.parse import quote
 from uuid import uuid4
 
+from .context_tools import ContextPlan, ContextToolService
 from .hindsight_gateway import HindsightGateway
 from .llm_gateway import LLMGateway
+from .rag_anything_gateway import RAGAnythingGateway, RAGAnythingSource
 from .schemas import (
     AssistantMessage,
     ChatResponse,
@@ -39,10 +43,14 @@ class ChatService:
         store: JsonStore,
         hindsight: HindsightGateway,
         llm: LLMGateway,
+        rag: RAGAnythingGateway | None = None,
+        context_tools: ContextToolService | None = None,
     ):
         self.store = store
         self.hindsight = hindsight
         self.llm = llm
+        self.rag = rag
+        self.context_tools = context_tools
 
     def _visible_memories(self, user: CommunityUser) -> list[Memory]:
         allowed = allowed_scope_keys(user)
@@ -191,6 +199,132 @@ class ChatService:
             label=f"#{channel_name} · {message.author_name}",
             permalink=message.permalink,
         )
+
+    def _rag_citation(
+        self,
+        source: RAGAnythingSource,
+        user: CommunityUser,
+    ) -> Citation:
+        channel_ids = {
+            "common": "general",
+            "qa": "qa",
+            "bot-commands": "bot-commands",
+        }
+        channel_id = channel_ids.get(source.channel_key, source.channel_key)
+        channel = channel_record(channel_id)
+        channel_name = channel.name if channel else source.channel_key
+        source_type = quote(source.source_type, safe="")
+        source_id = quote(source.source_id, safe="")
+        user_id = quote(user.id, safe="")
+        return Citation(
+            message_id=source.source_id,
+            channel_id=channel_id,
+            channel_name=channel_name,
+            label=f"#{channel_name} · {source.label}",
+            permalink=(
+                f"{self.rag.settings.api_public_url}/api/rag/sources/"
+                f"{source_type}/{source_id}?user_id={user_id}"
+            ),
+        )
+
+    def _tool_citation(
+        self,
+        source: dict,
+        user: CommunityUser,
+    ) -> Citation:
+        source_type = str(source["source_type"])
+        source_id = str(source["source_id"])
+        channel_key = str(source["channel_key"])
+        if source_type == "lesson":
+            room_suffix = (user.lecture_room_id or "LEC-D302").split("-", 1)[-1].casefold()
+            channel_id = f"lecture-{room_suffix}"
+        else:
+            channel_ids = {
+                "common": "general",
+                "qa": "qa",
+                "bot-commands": "bot-commands",
+            }
+            channel_id = channel_ids.get(channel_key, channel_key)
+        channel = channel_record(channel_id)
+        channel_name = channel.name if channel else channel_key
+        metadata = source.get("metadata") or {}
+        label = source.get("title") or metadata.get("title") or source_id
+        return Citation(
+            message_id=source_id,
+            channel_id=channel_id,
+            channel_name=channel_name,
+            label=f"#{channel_name} · {label}",
+            permalink=(
+                f"{self.llm.settings.api_public_url}/api/rag/sources/"
+                f"{quote(source_type, safe='')}/{quote(source_id, safe='')}?"
+                f"user_id={quote(user.id, safe='')}"
+            ),
+        )
+
+    @staticmethod
+    def _clean_rag_answer(value: str) -> str:
+        marker = (
+            r"\[?SOURCE_ID=[A-Za-z0-9_-]+\|TYPE="
+            r"(?:message|episode|painpoint)\|CHANNEL=[A-Za-z0-9_-]+\]?"
+        )
+        without_thinking = re.sub(
+            r"<think>.*?</think>",
+            "",
+            value,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        return re.sub(r"[ \t]*" + marker, "", without_thinking).strip()
+
+    @staticmethod
+    def _clean_tool_answer(value: str) -> str:
+        without_thinking = re.sub(
+            r"<think>.*?</think>",
+            "",
+            value,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        without_markers = re.sub(
+            r"[ \t]*\[(?:C|M)\d+\]",
+            "",
+            without_thinking,
+        )
+        without_internal_labels = re.sub(
+            (
+                r"\b(?:TOOL_CONTEXT|TIME_FACTS|RETRIEVED_EVIDENCE|"
+                r"CONFIRMED_MEMORY|SOURCE_MESSAGES)\b"
+            ),
+            "nguồn dữ liệu được cung cấp",
+            without_markers,
+            flags=re.IGNORECASE,
+        )
+        return without_internal_labels.strip()
+
+    @staticmethod
+    def _tool_fallback(sources: list[dict]) -> str:
+        if not sources:
+            return "Mình chưa tìm thấy context phù hợp trong các nguồn được phép đọc."
+        lines = ["Mình tìm thấy các đoạn liên quan nhất:"]
+        for source in sources[:3]:
+            content = str(source["content"]).strip()
+            excerpt = content if len(content) <= 360 else f"{content[:357]}..."
+            lines.append(f"• {excerpt}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _memories_for_tool_answer(
+        plan: ContextPlan,
+        memories: list[Memory],
+    ) -> list[Memory]:
+        if plan.lesson_intent:
+            return [
+                memory
+                for memory in memories
+                if memory.kind == "learning_note"
+                and memory.scope_type in {"room", "cohort"}
+            ][:4]
+        if plan.strict_discord_filter:
+            return []
+        return memories[:4]
 
     @staticmethod
     def _scope_label(memory: Memory) -> str:
@@ -351,6 +485,21 @@ class ChatService:
         )
         evidence = self._evidence_for(user, query)
         memories = self._visible_memories(user)
+        tool_retrieval = (
+            await self.context_tools.retrieve(user, query, channel_id)
+            if self.context_tools
+            else None
+        )
+        rag_result = None
+        exact_tool_route = bool(
+            tool_retrieval
+            and (
+                tool_retrieval.plan.lesson_intent
+                or tool_retrieval.plan.strict_discord_filter
+            )
+        )
+        if not exact_tool_route:
+            rag_result = await self.rag.query(user, query) if self.rag else None
         external_memories = await self.hindsight.recall_confirmed(
             list(allowed_scope_keys(user)),
             query,
@@ -365,20 +514,85 @@ class ChatService:
         relevant_memories = [
             memory for memory in memories if memory.content in fallback_answer
         ]
-        answer = await self.llm.answer(
-            user,
-            query,
-            evidence,
-            relevant_memories,
-            fallback_answer,
-        )
+        tool_calls = []
+        if tool_retrieval:
+            tool_calls = [
+                {
+                    "name": call.name,
+                    "arguments": call.arguments,
+                    "reason": call.reason,
+                    "result_count": call.result_count,
+                }
+                for call in tool_retrieval.calls
+            ]
+        if tool_retrieval and tool_retrieval.should_answer_directly:
+            relevant_memories = self._memories_for_tool_answer(
+                tool_retrieval.plan,
+                memories,
+            )
+            raw_answer = await self.llm.answer_with_tool_context(
+                user,
+                query,
+                tool_retrieval.sources,
+                relevant_memories,
+                tool_retrieval.temporal_context,
+                self._tool_fallback(tool_retrieval.sources),
+            )
+            cited_indexes = list(
+                dict.fromkeys(
+                    int(value)
+                    for value in re.findall(r"\[C(\d+)\]", raw_answer)
+                )
+            )
+            memory_indexes = list(
+                dict.fromkeys(
+                    int(value)
+                    for value in re.findall(r"\[M(\d+)\]", raw_answer)
+                )
+            )
+            answer = self._clean_tool_answer(raw_answer)
+            cited_sources = (
+                [
+                    tool_retrieval.sources[index - 1]
+                    for index in cited_indexes
+                    if 1 <= index <= len(tool_retrieval.sources)
+                ]
+                or tool_retrieval.sources[:4]
+            )
+            citations = [
+                self._tool_citation(source, user)
+                for source in cited_sources[:4]
+            ]
+            relevant_memories = [
+                relevant_memories[index - 1]
+                for index in memory_indexes
+                if 1 <= index <= len(relevant_memories)
+            ]
+            response_provider = f"context-tools+{self.llm.status().name}"
+        elif rag_result:
+            answer = self._clean_rag_answer(rag_result.answer)
+            citations = [
+                self._rag_citation(source, user)
+                for source in rag_result.sources[:4]
+            ]
+            response_provider = rag_result.provider
+        else:
+            answer = await self.llm.answer(
+                user,
+                query,
+                evidence,
+                relevant_memories,
+                fallback_answer,
+            )
+            citations = [self._citation(value) for value in evidence[:3]]
+            response_provider = self.llm.status().name
         used_ids = [memory.id for memory in relevant_memories]
         assistant_message = AssistantMessage(
             id=f"turn-{uuid4().hex[:10]}",
             role="assistant",
             author_name="Trợ lý Kute",
             content=answer,
-            citations=[self._citation(value) for value in evidence[:3]],
+            citations=citations,
             memory_used=used_ids,
             created_at=now(),
         )
@@ -406,7 +620,8 @@ class ChatService:
         return ChatResponse(
             message=assistant_message,
             candidate=candidate,
-            provider=self.llm.status().name,
+            provider=response_provider,
+            tool_calls=tool_calls,
         )
 
     async def confirm_candidate(self, candidate_id: str, user: CommunityUser) -> Memory:

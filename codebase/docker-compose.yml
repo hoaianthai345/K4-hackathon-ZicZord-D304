@@ -1,4 +1,54 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kute}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kute_demo}
+      POSTGRES_DB: ${POSTGRES_DB:-kute}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rag-anything:
+    build:
+      context: ./rag-service
+      args:
+        RAG_ANYTHING_COMMIT: ${RAG_ANYTHING_COMMIT:-65b7ffdeb801309d4c87b6accf81bfe5cd9b175d}
+    restart: unless-stopped
+    ports:
+      - "8010:8010"
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_API_BASE_URL: ${OPENROUTER_API_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
+      RAG_LLM_API_KEY: ${GROQ_API_KEY:-}
+      RAG_LLM_BASE_URL: ${GROQ_API_BASE_URL:-https://api.groq.com/openai/v1}
+      RAG_LLM_MODEL: ${GROQ_MODEL:-qwen/qwen3.6-27b}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-nvidia/nemotron-3-embed-1b:free}
+      RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-2048}
+      RAG_MAX_MESSAGES: ${RAG_MAX_MESSAGES:-8}
+      RAG_MAX_EPISODES: ${RAG_MAX_EPISODES:-12}
+      RAG_MAX_PAINPOINTS: ${RAG_MAX_PAINPOINTS:-24}
+      RAG_CHUNK_TOKEN_SIZE: ${RAG_CHUNK_TOKEN_SIZE:-3000}
+      RAG_STORAGE_ROOT: /data/rag_storage
+    volumes:
+      - rag-anything-data:/data/rag_storage
+      - ./data/processed:/data/processed:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   backend:
     build:
       context: ./backend
@@ -6,7 +56,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      FRONTEND_ORIGIN: http://localhost:3000
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       MEMORY_PROVIDER: ${MEMORY_PROVIDER:-local}
       HINDSIGHT_BASE_URL: http://hindsight:8888
       HINDSIGHT_API_KEY: ${HINDSIGHT_API_KEY:-}
@@ -17,9 +67,22 @@ services:
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
       OPENROUTER_API_BASE_URL: ${OPENROUTER_API_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:3000}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_API_BASE_URL: ${GROQ_API_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.6-27b}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kute}:${POSTGRES_PASSWORD:-kute_demo}@postgres:5432/${POSTGRES_DB:-kute}
+      RAG_ENABLED: "true"
+      RAG_ANYTHING_URL: http://rag-anything:8010
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       STATE_PATH: /app/state/demo_state.json
     volumes:
       - demo-state:/app/state
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rag-anything:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -27,8 +90,8 @@ services:
         - -c
         - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
       interval: 10s
-      timeout: 3s
-      retries: 5
+      timeout: 8s
+      retries: 8
 
   frontend:
     build:
@@ -41,6 +104,60 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  dataset-loader:
+    profiles: ["index"]
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kute}:${POSTGRES_PASSWORD:-kute_demo}@postgres:5432/${POSTGRES_DB:-kute}
+    volumes:
+      - ./data/processed:/data/processed:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - python
+      - -m
+      - app.dataset_ingest
+      - --processed-dir
+      - /data/processed
+
+  rag-indexer:
+    profiles: ["index"]
+    build:
+      context: ./backend
+    depends_on:
+      rag-anything:
+        condition: service_healthy
+    command:
+      - python
+      - -m
+      - app.rag_index
+      - --url
+      - http://rag-anything:8010
+      - --scope-key
+      - cohort:K4
+      - --processed-dir
+      - /data/processed
+
+  learning-loader:
+    profiles: ["index"]
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kute}:${POSTGRES_PASSWORD:-kute_demo}@postgres:5432/${POSTGRES_DB:-kute}
+    volumes:
+      - ../data/vlearn-pack:/data/vlearn-pack:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - python
+      - -m
+      - app.learning_ingest
+      - --pack-root
+      - /data/vlearn-pack
 
   hindsight:
     profiles: ["hindsight"]
@@ -58,3 +175,5 @@ services:
 volumes:
   demo-state:
   hindsight-data:
+  postgres-data:
+  rag-anything-data:

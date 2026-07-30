@@ -23,3 +23,8 @@ codebase/backend/state/*.json
 codebase/tmp/
 codebase/traces/*.json
 !codebase/traces/.gitkeep
+
+# Local Discord exports and derived datasets may contain personal data
+codebase/data/raw/
+codebase/data/processed/*
+!codebase/data/processed/.gitkeep

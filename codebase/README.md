@@ -1,14 +1,15 @@
-# Kute Memory MVP
+# Kute Catch-up MVP
 
-Discord Learning Copilot cho lớp K4:
+Discord Catch-up Copilot cho lớp K4:
 
-- Đọc Discord snapshot từ Apify Dataset API.
-- Giữ message nguồn với author, channel, time và permalink.
-- Tính access theo user, team, group mentor, phòng học và cohort.
-- Recall confirmed memory từ đúng scope.
-- Trả summary có citation và cho user confirm memory mới.
+- Bắt kịp các channel được phép đọc trong 24 giờ.
+- Trả brief gồm quyết định, việc cần làm, deadline, blocker và citation.
+- Tạo checklist hôm nay hoặc đánh dấu đã biết sau bản brief.
+- Giữ scope authorization và confirmed memory làm hạ tầng phía dưới.
+- Chuẩn hóa Discord export mà không sửa/xóa dữ liệu gốc.
 
-Stack: Next.js 16, FastAPI, Hindsight 0.8.6 và Docker Compose.
+Stack: Next.js 16, FastAPI, PostgreSQL 16, HKUDS/RAG-Anything,
+Hindsight 0.8.6 và Docker Compose.
 
 ## Chạy ngay
 
@@ -19,23 +20,163 @@ docker compose up --build
 
 - Landing kiêm pitch: <http://localhost:3000>
 - Discord Copilot: <http://localhost:3000/chat>
+- Context & memory admin: <http://localhost:3000/admin>
 - FastAPI docs: <http://localhost:8000/docs>
 
-Mặc định app dùng Discord snapshot synthetic nên không cần API key.
+Landing và chat vẫn dùng UI hiện tại. Khi chưa index, chat tự fallback về Discord
+snapshot synthetic.
 
-Nếu có `OPENROUTER_API_KEY`, local demo dùng model miễn phí ổn định
-`google/gemma-4-26b-a4b-it:free`. Có thể đổi sang
-`qwen/qwen3.6-27b` khi tài khoản OpenRouter có credit.
+Backend ưu tiên Groq khi có `GROQ_API_KEY`, sau đó mới fallback sang
+OpenRouter. Không đưa key vào source code hoặc image Docker.
+
+## Vercel frontend + Docker backend trên máy local
+
+Backend có thể public tạm thời qua Cloudflare Quick Tunnel:
+
+```bash
+cloudflared tunnel --no-autoupdate --url http://localhost:8000
+```
+
+Lấy URL `https://...trycloudflare.com` từ output, sau đó khởi động lại backend
+với citation URL và CORS của frontend:
+
+```bash
+FRONTEND_ORIGIN="http://localhost:3000,https://your-project.vercel.app" \
+API_PUBLIC_URL="https://your-tunnel.trycloudflare.com" \
+docker compose up -d --build backend
+```
+
+Deploy frontend:
+
+```bash
+cd frontend
+vercel link --yes --project kute-discord-copilot
+vercel --prod --yes \
+  --build-env NEXT_PUBLIC_API_URL=https://your-tunnel.trycloudflare.com
+```
+
+Quick Tunnel không có uptime guarantee và URL thay đổi khi process restart.
+Máy local, Docker Desktop và `cloudflared` phải tiếp tục chạy. Với domain ổn
+định, chuyển sang Cloudflare Named Tunnel. Trước khi public trang admin, đặt
+`ADMIN_API_KEY` và nhập cùng key trong `/admin`.
 
 ## Kịch bản demo 2 phút
 
 1. Mở `/chat` với user Thái Hoài An.
-2. Gửi `Tóm tắt nội dung bài giảng ngày hôm qua`.
-3. Mở citation `#Lec-D302`.
-4. Gửi `Team mình đang chốt gì và còn blocker nào?`.
-5. Chỉ panel context: `U01862`, `T004`, `G10`, `D302`, `D304`, `K4`.
-6. Gửi `Team mình chốt demo scope memory trước 18h.` rồi confirm memory T004.
-7. Chuyển sang Trần Mai Lan, team T009, để chứng minh T004 không xuất hiện.
+2. Bấm `Bắt kịp trong 24 giờ qua`.
+3. Chỉ bốn loại thông tin: đã chốt, cần làm, deadline, blocker.
+4. Mở citation về message Discord nguồn.
+5. Bấm `Tạo checklist hôm nay` và đánh dấu một việc hoàn tất.
+6. Chuyển sang Trần Mai Lan, team T009, để chứng minh T004 không xuất hiện.
+
+## Xử lý dataset local
+
+```bash
+python3 -m pip install -r data_pipeline/requirements.txt
+python3 -m data_pipeline.process_discord_exports \
+  --input "/absolute/path/to/Dataset" \
+  --output data/processed
+```
+
+Pipeline sinh `messages_clean`, `issue_episodes` và `painpoint_summary`. Output bị
+Git ignore vì vẫn giữ content gốc; xem [hướng dẫn pipeline](data_pipeline/README.md)
+và [report aggregate](../evidence/dataset-processing-report.md).
+
+## PostgreSQL và RAG-Anything
+
+RAG service dùng repo chính thức
+[HKUDS/RAG-Anything](https://github.com/HKUDS/RAG-Anything), pin commit
+`65b7ffdeb801309d4c87b6accf81bfe5cd9b175d` (release code `1.3.1`).
+Discord JSONL đã được parse nên service dùng direct content insertion, không cần
+MinerU.
+
+```bash
+# Khởi động database, RAG service, FastAPI và UI.
+docker compose up -d --build
+
+# Nạp toàn bộ messages/episodes/painpoints vào PostgreSQL.
+docker compose --profile index run --rm dataset-loader
+
+# Tạo hot index LightRAG từ content_model đã redact.
+docker compose --profile index run --rm rag-indexer
+```
+
+Loader và indexer đều idempotent. PostgreSQL giữ toàn bộ record chuẩn hóa để
+audit/citation. Hot index mặc định ưu tiên 8 message, 12 episode và 24 painpoint
+có tín hiệu mạnh để vừa ngân sách hackathon; có thể tăng bằng
+`RAG_MAX_MESSAGES`, `RAG_MAX_EPISODES`, `RAG_MAX_PAINPOINTS`.
+
+RAG dùng OpenRouter cho embedding
+`nvidia/nemotron-3-embed-1b:free` và có thể dùng Groq riêng cho phần sinh đáp án
+với `qwen/qwen3.6-27b`. Adapter tắt reasoning của Qwen cho query RAG để tránh
+reasoning token chiếm completion budget và làm câu trả lời/citation bị cắt.
+
+Kiểm tra:
+
+```bash
+curl http://localhost:8000/health
+
+curl -X POST http://localhost:8000/api/rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"U01862","query":"Vì sao không nhận được GitHub Organization invite?"}'
+```
+
+FastAPI tự tính scope từ membership. Client chỉ gửi `user_id` và câu hỏi, không
+được tự cấp `scope_keys`. Citation trả về endpoint
+`/api/rag/sources/{type}/{id}`; endpoint này kiểm tra scope lần nữa và chỉ trả
+text đã redact, không trả `content_original`.
+
+## Nạp context bài học
+
+Pack bài học được mount read-only từ `../data/vlearn-pack`; loader không sửa
+transcript, slide PDF hoặc chatlog gốc.
+
+```bash
+docker compose --profile index run --rm learning-loader
+```
+
+Kết quả hiện tại là 2.019 context:
+
+- 700 đoạn transcript có citation code.
+- 58 trang slide.
+- 1.261 cặp hỏi đáp học viên/tutor.
+
+Toàn bộ context được giữ trong bảng `learning_context`. `content_original` chỉ
+để audit cục bộ; `content_model` đã redact email, số điện thoại và chuỗi giống
+API key. Search bài học chạy local bằng PostgreSQL FTS/trigram, không gửi cả
+pack sang embedding bên ngoài. Chỉ các excerpt đứng đầu mới đi vào LLM để tổng
+hợp câu trả lời.
+
+## Context tool routing
+
+Backend lập retrieval plan trước khi gọi model:
+
+| Câu hỏi | Tool chính | Ràng buộc |
+|---|---|---|
+| “Hôm nay/hôm qua” | `get_current_datetime` | ngày hiện tại theo Asia/Ho_Chi_Minh |
+| Khái niệm/bài giảng/slide | `search_learning_context` | `day_code`, loại nguồn |
+| “Kênh hỏi đáp hôm qua” | `search_discord_messages` | channel + mốc giờ UTC đổi từ Asia/Ho_Chi_Minh |
+| Đối chiếu ngày nguồn | `inspect_context_date_range` | ngày được hỏi + timestamp đầu/cuối của context |
+| “Team/nhóm mình” | `search_discord_messages` | đúng channel của team từ membership |
+| Lỗi/pain point lặp lại không chỉ rõ thời gian | `rag_anything_hybrid_search` | scope allow-list do server tính |
+| Memory đã xác nhận | `recall_confirmed_memory` | user/team/group/room/cohort được phép |
+
+Query có channel hoặc time window là strict: nếu không có kết quả, backend
+không tự mở rộng sang channel khác bằng semantic RAG. Retrieval trace có thể
+kiểm tra tại tab **Tool inspector** của `/admin`.
+
+Answer LLM nhận time facts riêng, nhưng UI không hiển thị tên section/tool hoặc
+quá trình suy luận. Nội dung bot được render bằng Markdown an toàn; raw HTML bị
+bỏ và link mở ở tab mới.
+
+Trang admin còn hỗ trợ:
+
+- Tìm và bật/tắt lesson, Discord message, issue episode và pain point.
+- Tạo, sửa, xóa confirmed memory theo scope.
+- Re-index Discord RAG theo digest idempotent.
+
+Production nên đặt `ADMIN_API_KEY`; UI giữ key trong `sessionStorage` và gửi qua
+`X-Admin-Key`. Khi biến này trống, admin được mở để demo local.
 
 ## Nối Apify
 
@@ -87,10 +228,11 @@ Recall dùng strict tags và chỉ chạy trên bank server tính từ membershi
 ## Phát triển và kiểm tra
 
 ```bash
-cd backend
-python3 -m pytest -q
+docker compose run --rm -v "$PWD/backend:/app" backend pytest -q
 
-cd ../frontend
+python3 -m pytest data_pipeline/test_process_discord_exports.py -q
+
+cd frontend
 npm run lint
 npm run build
 npm audit --omit=dev
@@ -100,5 +242,6 @@ Tài liệu:
 
 - [Scope model](../architecture/discord-scope-model.md)
 - [Hindsight integration](../architecture/hindsight-integration.md)
+- [PostgreSQL và RAG-Anything](../architecture/rag-anything-integration.md)
 - [Product spec](../spec.md)
 - [Kế hoạch 24 giờ](../PM-24H-PLAN.md)

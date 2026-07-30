@@ -1,4 +1,4 @@
-import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeft, GearSix } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 
 import { ChatShell } from "@/components/chat-shell";
@@ -24,6 +24,14 @@ export default function ChatPage() {
           <span className="hidden text-xs text-muted sm:inline">
             MVP · Discord snapshot đã chuẩn hóa
           </span>
+          <Link
+            href="/admin"
+            className="button-secondary button-small"
+            aria-label="Mở Context Admin"
+          >
+            <GearSix size={15} />
+            <span className="hidden sm:inline">Admin</span>
+          </Link>
           <ThemeToggle />
         </div>
       </header>

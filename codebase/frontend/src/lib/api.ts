@@ -1,4 +1,12 @@
-import type { ChatResponse, DiscordState, Memory } from "./types";
+import type {
+  AdminContextList,
+  AdminMemoryInput,
+  AdminOverview,
+  ChatResponse,
+  ContextPlanResponse,
+  DiscordState,
+  Memory,
+} from "./types";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
@@ -23,6 +31,20 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+function adminFetch<T>(
+  path: string,
+  adminKey: string,
+  init?: RequestInit,
+): Promise<T> {
+  return apiFetch(path, {
+    ...init,
+    headers: {
+      ...(adminKey ? { "X-Admin-Key": adminKey } : {}),
+      ...init?.headers,
+    },
+  });
 }
 
 export function getDiscordState(userId: string): Promise<DiscordState> {
@@ -63,4 +85,103 @@ export function deleteMemory(memoryId: string, userId: string): Promise<void> {
 
 export function resetDemo(): Promise<void> {
   return apiFetch("/api/reset", { method: "POST" });
+}
+
+export function getAdminOverview(adminKey: string): Promise<AdminOverview> {
+  return adminFetch("/api/admin/overview", adminKey);
+}
+
+export function getAdminContext(
+  adminKey: string,
+  filters: {
+    search?: string;
+    sourceType?: string;
+    enabled?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<AdminContextList> {
+  const params = new URLSearchParams();
+  if (filters.search) params.set("search", filters.search);
+  if (filters.sourceType) params.set("source_type", filters.sourceType);
+  if (filters.enabled !== undefined) params.set("enabled", String(filters.enabled));
+  params.set("limit", String(filters.limit ?? 50));
+  params.set("offset", String(filters.offset ?? 0));
+  return adminFetch(`/api/admin/context?${params}`, adminKey);
+}
+
+export function updateAdminContext(
+  adminKey: string,
+  sourceType: string,
+  sourceId: string,
+  isEnabled: boolean,
+): Promise<void> {
+  return adminFetch(
+    `/api/admin/context/${encodeURIComponent(sourceType)}/${encodeURIComponent(sourceId)}`,
+    adminKey,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ is_enabled: isEnabled }),
+    },
+  );
+}
+
+export function inspectContextPlan(
+  adminKey: string,
+  query: string,
+  userId = "U01862",
+  channelId = "bot-commands",
+): Promise<ContextPlanResponse> {
+  return adminFetch("/api/admin/context/plan", adminKey, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId,
+      query,
+      channel_id: channelId,
+    }),
+  });
+}
+
+export function reindexAdminContext(adminKey: string): Promise<Record<string, unknown>> {
+  return adminFetch("/api/admin/context/reindex", adminKey, { method: "POST" });
+}
+
+export function getAdminMemories(adminKey: string): Promise<Memory[]> {
+  return adminFetch("/api/admin/memories", adminKey);
+}
+
+export function createAdminMemory(
+  adminKey: string,
+  memory: AdminMemoryInput,
+): Promise<Memory> {
+  return adminFetch("/api/admin/memories", adminKey, {
+    method: "POST",
+    body: JSON.stringify(memory),
+  });
+}
+
+export function updateAdminMemory(
+  adminKey: string,
+  memoryId: string,
+  changes: Partial<AdminMemoryInput>,
+): Promise<Memory> {
+  return adminFetch(
+    `/api/admin/memories/${encodeURIComponent(memoryId)}`,
+    adminKey,
+    {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    },
+  );
+}
+
+export function deleteAdminMemory(
+  adminKey: string,
+  memoryId: string,
+): Promise<void> {
+  return adminFetch(
+    `/api/admin/memories/${encodeURIComponent(memoryId)}`,
+    adminKey,
+    { method: "DELETE" },
+  );
 }

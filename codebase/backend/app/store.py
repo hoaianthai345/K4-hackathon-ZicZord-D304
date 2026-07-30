@@ -24,6 +24,9 @@ class JsonStore:
                     "candidates",
                     "assistant_messages",
                     "ingestion",
+                    "catchup_briefs",
+                    "checklists",
+                    "acknowledged_briefs",
                 }
                 if required.issubset(self._state):
                     return

@@ -300,7 +300,7 @@ def initial_state() -> dict:
             "team-t004",
             "U01241",
             "T004-Nguyễn Văn Phong-01241",
-            "Team chốt Next.js cho frontend, FastAPI cho backend và Apify làm nguồn Discord snapshot.",
+            "Team chốt demo tính năng memory trước 18h hôm nay; stack giữ Next.js, FastAPI và Docker.",
             hours=-4,
         ),
         _message(
@@ -316,7 +316,7 @@ def initial_state() -> dict:
             "team-t004",
             "U01862",
             "T004-Thái Hoài An-01862",
-            "An phụ trách scope memory và kiểm tra không lẫn dữ liệu giữa các team.",
+            "An phụ trách hoàn thiện API ingest và kiểm tra không lẫn dữ liệu giữa các team.",
             hours=-2,
         ),
         _message(
@@ -324,7 +324,7 @@ def initial_state() -> dict:
             "team-t004",
             "U01241",
             "T004-Nguyễn Văn Phong-01241",
-            "Blocker hiện tại: chưa có APIFY_TOKEN nên trước mắt dùng dataset demo đã chuẩn hóa.",
+            "Blocker hiện tại: chưa map được channel Lab-D304 từ Apify dataset.",
             hours=-1,
         ),
         _message(
@@ -332,7 +332,7 @@ def initial_state() -> dict:
             "group-g10",
             "M-G10",
             "Mentor Vũ Nhật Cường",
-            "Các team G10 cần đẩy repo và một happy path lên trước buổi check-in thứ Tư.",
+            "Mentor yêu cầu chuẩn bị bản demo và đẩy repo trước buổi check-in thứ Tư.",
             hours=-6,
         ),
         _message(
@@ -381,7 +381,7 @@ def initial_state() -> dict:
                 "scope_type": "team",
                 "scope_id": "T004",
                 "kind": "decision",
-                "content": "T004 dùng Next.js, FastAPI, Docker và Apify Discord snapshot.",
+                "content": "T004 chốt demo memory trước 18h, dùng Next.js, FastAPI và Docker.",
                 "evidence": ["dc-msg-402"],
                 "created_by": "U01241",
                 "status": "confirmed",
@@ -393,7 +393,7 @@ def initial_state() -> dict:
                 "scope_type": "team",
                 "scope_id": "T004",
                 "kind": "blocker",
-                "content": "T004 chưa có APIFY_TOKEN, đang chạy bằng dataset demo chuẩn hóa.",
+                "content": "T004 chưa map được channel Lab-D304 từ Apify dataset.",
                 "evidence": ["dc-msg-405"],
                 "created_by": "U01241",
                 "status": "confirmed",
@@ -405,7 +405,7 @@ def initial_state() -> dict:
                 "scope_type": "group",
                 "scope_id": "G10",
                 "kind": "task",
-                "content": "Mentor yêu cầu các team G10 có repo và happy path trước check-in thứ Tư.",
+                "content": "Mentor yêu cầu chuẩn bị bản demo và đẩy repo trước check-in thứ Tư.",
                 "evidence": ["dc-msg-501"],
                 "created_by": "M-G10",
                 "status": "confirmed",
@@ -445,9 +445,8 @@ def initial_state() -> dict:
                     "role": "assistant",
                     "author_name": "Trợ lý Kute",
                     "content": (
-                        "Chào An. Mình đã nối đúng 6 phạm vi bạn được phép xem: cá nhân, "
-                        "T004, G10, Lec-D302, Lab-D304 và cộng đồng K4. Hỏi mình về bài giảng "
-                        "hôm qua, việc team đang chốt hoặc lời nhắc của mentor nhé."
+                        "Chào An. Khi quay lại sau một ngày, bấm “Bắt kịp 24 giờ qua” để xem "
+                        "quyết định, việc cần làm, deadline và blocker từ đúng các kênh bạn được phép đọc."
                     ),
                     "citations": [],
                     "memory_used": ["mem-user-an-style", "mem-team-t004-stack"],
@@ -462,4 +461,7 @@ def initial_state() -> dict:
             "imported_count": len(discord_messages),
             "skipped_count": 0,
         },
+        "catchup_briefs": {},
+        "checklists": {},
+        "acknowledged_briefs": {},
     }
