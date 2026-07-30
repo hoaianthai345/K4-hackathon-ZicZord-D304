@@ -1,3 +1,25 @@
+# Existing project rules
 .DS_Store
 node_modules/
 *.env
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# JavaScript
+npm-debug.log*
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+*.py[cod]
+codebase/backend/state/*.json
+
+# Local Hindsight state and demo outputs
+.hindsight/
+codebase/tmp/
+codebase/traces/*.json
+!codebase/traces/.gitkeep

@@ -1,0 +1,60 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      FRONTEND_ORIGIN: http://localhost:3000
+      MEMORY_PROVIDER: ${MEMORY_PROVIDER:-local}
+      HINDSIGHT_BASE_URL: http://hindsight:8888
+      HINDSIGHT_API_KEY: ${HINDSIGHT_API_KEY:-}
+      APIFY_TOKEN: ${APIFY_TOKEN:-}
+      APIFY_DATASET_ID: ${APIFY_DATASET_ID:-}
+      APIFY_API_BASE_URL: ${APIFY_API_BASE_URL:-https://api.apify.com/v2}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
+      OPENROUTER_API_BASE_URL: ${OPENROUTER_API_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:3000}
+      STATE_PATH: /app/state/demo_state.json
+    volumes:
+      - demo-state:/app/state
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  hindsight:
+    profiles: ["hindsight"]
+    image: ghcr.io/vectorize-io/hindsight:0.8.6
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+      - "9999:9999"
+    environment:
+      HINDSIGHT_API_LLM_PROVIDER: ${HINDSIGHT_API_LLM_PROVIDER:-gemini}
+      HINDSIGHT_API_LLM_API_KEY: ${HINDSIGHT_API_LLM_API_KEY:-}
+    volumes:
+      - hindsight-data:/home/hindsight/.pg0
+
+volumes:
+  demo-state:
+  hindsight-data:

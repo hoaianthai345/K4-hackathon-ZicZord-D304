@@ -1,0 +1,12 @@
+{
+  "name": "vlearn-learning-memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hindsight:smoke": "node scripts/hindsight-smoke.mjs"
+  },
+  "dependencies": {
+    "@vectorize-io/hindsight-client": "0.8.6"
+  }
+}
