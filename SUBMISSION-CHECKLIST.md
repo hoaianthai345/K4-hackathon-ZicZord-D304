@@ -13,7 +13,7 @@
 | `eval/` có ≥20 case, bar khóa, baseline + full run | ✅ | 24 case; baseline 8/24; submission 24/24; bar 80% |
 | `validation/` có evidence A | ✅ | 24 response ẩn danh + 5 transcript interview |
 | User-test prototype ≥5 người | ⚠️ 3/5 | `validation/user-test-log.md`; cần thêm 2 phiên |
-| `reflection/` mỗi thành viên một file | ⚠️ 3/5 | Đã có Tuyến, Trình, Khang; thiếu An, Phúc |
+| `reflection/` mỗi thành viên một file | ⚠️ 4/5 | Đã có Tuyến, An, Trình, Khang; thiếu Phúc |
 | Backup demo screenshot/video | ✅ ảnh | `demo/production-landing.png` + `demo/production-t004-brief.png`; video 60–90 giây vẫn nên quay |
 
 ## Bằng chứng và rubric
@@ -42,7 +42,7 @@
 ## Việc không thể tự điền thay thành viên/người dùng
 
 - Hai người ngoài nhóm cần tự chạy prototype và để lại feedback quan sát được.
-- Thái Hoài An và Nguyễn Văn Phúc cần tự viết reflection:
+- Nguyễn Văn Phúc cần tự viết reflection:
   vai trò, AI hỗ trợ gì, một case fail thật và nếu làm lại sẽ đổi gì.
 - OAuth Google Tasks cần owner tài khoản Google cấp quyền; nếu không có, giữ
   pitch-mock và trình bày trung thực.

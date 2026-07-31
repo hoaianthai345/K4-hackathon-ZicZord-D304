@@ -77,7 +77,7 @@ Kết quả submission: **24/24 (100%)**, 0 critical failure, đạt quality bar
 - Đã có: README + phân công, spec, codebase, eval baseline/final, survey n=24,
   5 interview, 3 willing users, demo-slides PDF và live demo.
 - Cần con người hoàn tất trước khi nộp: thêm **2 user-test prototype** để đủ 5
-  và viết reflection riêng cho Thái Hoài An, Nguyễn Văn Phúc.
+  và viết reflection riêng cho Nguyễn Văn Phúc.
 - Chi tiết bằng chứng/pass/blocker: [SUBMISSION-CHECKLIST.md](SUBMISSION-CHECKLIST.md).
 
 ## Tài liệu chương trình (không sửa)
