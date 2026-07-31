@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   keywords: [
     "Discord",
     "MCP",
-    "Jira",
+    "Google Tasks",
     "AI agent",
     "team management",
     "action item",

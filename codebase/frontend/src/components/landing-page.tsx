@@ -174,11 +174,11 @@ function ActionItemDemo() {
           <div className={styles.syncedState} aria-live="polite">
             <CheckCircle size={22} weight="fill" />
             <div>
-              <strong>Đã tạo issue trong Jira sandbox</strong>
-              <span>Candidate được lưu cùng nguồn Discord để truy vết.</span>
+              <strong>Đã tạo bản nháp Google Tasks</strong>
+              <span>Pitch-mock chưa ghi vào Google; nguồn Discord vẫn được lưu để truy vết.</span>
             </div>
             <a href="#architecture" aria-label="Xem kiến trúc connector">
-              K4-128
+              pitch-mock
               <ArrowUpRight size={14} weight="bold" />
             </a>
           </div>
@@ -186,7 +186,7 @@ function ActionItemDemo() {
           <div className={styles.errorState} role="alert">
             <WarningCircle size={22} weight="fill" />
             <div>
-              <strong>Jira connector chưa phản hồi</strong>
+              <strong>Google Tasks connector chưa phản hồi</strong>
               <span>Candidate vẫn được giữ. Retry không tạo task trùng.</span>
             </div>
             <button type="button" onClick={() => setState("idle")}>
@@ -209,7 +209,7 @@ function ActionItemDemo() {
               ) : (
                 <>
                   <Kanban size={17} weight="fill" />
-                  Đồng bộ Jira
+                  Tạo bản nháp
                 </>
               )}
             </button>
@@ -254,8 +254,8 @@ const architectureSteps = [
   },
   {
     icon: Kanban,
-    title: "Jira",
-    detail: "Issue sau xác nhận",
+    title: "Google Tasks",
+    detail: "Bản nháp; live sau OAuth",
   },
 ];
 
@@ -283,7 +283,7 @@ export function LandingPage() {
               <span>Task đã chốt.</span>
             </h1>
             <p>
-              ZicZord đề xuất owner, deadline và đồng bộ Jira sau một lần xác nhận.
+              ZicZord đề xuất owner, deadline và chuẩn bị Google Task sau một lần xác nhận.
             </p>
             <div className={styles.heroActions}>
               <Link href="/chat" className={styles.primaryCta}>
@@ -419,8 +419,8 @@ export function LandingPage() {
             <ActionItemDemo />
           </Reveal>
           <p className={styles.demoDisclosure}>
-            Jira đang ở chế độ prototype connector. Flow confirm và Google Calendar
-            adapter đã có backend thật.
+            Google Tasks đang ở chế độ pitch-mock: flow confirm chạy thật nhưng chưa ghi
+            vào tài khoản Google cho đến khi cấu hình OAuth.
           </p>
         </div>
       </section>
@@ -431,8 +431,8 @@ export function LandingPage() {
             <span className={styles.sectionTag}>MCP architecture</span>
             <h2>Đổi công cụ, không phải viết lại agent.</h2>
             <p>
-              MCP tách reasoning khỏi connector. Jira hôm nay, Calendar hoặc Tasks ngày mai
-              vẫn dùng cùng một contract.
+              MCP tách reasoning khỏi connector. Google Tasks, Calendar hoặc Jira đều dùng
+              cùng một contract sau khi connector được cấp quyền.
             </p>
           </Reveal>
 
@@ -500,12 +500,12 @@ export function LandingPage() {
               <PlugsConnected size={30} weight="duotone" />
               <div>
                 <h3>MCP-ready tools</h3>
-                <p>Connector có schema rõ, dễ thay Jira, Calendar hoặc task service.</p>
+                <p>Connector có schema rõ, dễ thay Google Tasks, Calendar hoặc Jira.</p>
               </div>
               <div className={styles.toolConstellation} aria-hidden="true">
                 <span>discord.read</span>
                 <span>task.propose</span>
-                <span>jira.create</span>
+                <span>google_tasks.create</span>
               </div>
             </Reveal>
 
