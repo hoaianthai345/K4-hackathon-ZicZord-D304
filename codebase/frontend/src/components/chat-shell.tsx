@@ -39,6 +39,7 @@ import type {
   MemoryCandidate,
   ScopeType,
 } from "@/lib/types";
+import { ZicZordAvatar } from "./ziczord-avatar";
 
 const PROFILE_STORAGE_KEY = "kute-learner-profile-id";
 
@@ -270,9 +271,11 @@ function AssistantTurn({ message }: { message: AssistantMessage }) {
       animate={{ opacity: 1, y: 0 }}
       className="discord-turn"
     >
-      <span className={assistant ? "avatar avatar-bot" : "avatar avatar-user"}>
-        {assistant ? "Z" : initials(message.author_name)}
-      </span>
+      {assistant ? (
+        <ZicZordAvatar />
+      ) : (
+        <span className="avatar avatar-user">{initials(message.author_name)}</span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <p className={assistant ? "message-author text-accent-strong" : "message-author"}>
@@ -756,7 +759,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
               ))}
               {sending && (
                 <div className="discord-turn" role="status">
-                  <span className="avatar avatar-bot">Z</span>
+                  <ZicZordAvatar />
                   <div>
                     <p className="message-author text-accent-strong">Trợ lý ZicZord</p>
                     <div className="mt-2 flex gap-1.5">

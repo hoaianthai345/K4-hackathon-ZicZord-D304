@@ -18,11 +18,13 @@ import {
   UsersThree,
 } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "motion/react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { ChatShell } from "./chat-shell";
 import { SiteNav } from "./site-nav";
+import { ZicZordAvatar } from "./ziczord-avatar";
 
 const sections = ["home", "problem", "model", "scope", "demo", "telegram", "trust", "next"];
 const telegramBotUrl =
@@ -174,57 +176,68 @@ export function PitchDeck() {
       <section id="problem" className="pitch-section">
         <div className="pitch-container section-pad">
           <Reveal>
-            <SectionLabel>Khoảng trống đang có trong Discord</SectionLabel>
+            <SectionLabel>Tín hiệu từ người dùng</SectionLabel>
             <div className="section-heading-grid">
               <h2 className="section-title">
-                Bot có mặt trong server. Nhưng không hiểu lớp đang làm gì.
+                Bot trả lời được thông tin. Học viên vẫn phải tự ghép lại việc cần làm.
               </h2>
               <p className="section-copy">
-                Cùng một câu hỏi cần đọc channel, vai trò, phòng học và lịch sử project trước khi trả lời.
+                Phỏng vấn học viên chỉ ra khoảng trống giữa tra cứu thông tin và bắt kịp hội thoại.
               </p>
             </div>
           </Reveal>
 
-          <div className="problem-layout">
-            <Reveal className="failure-quote">
-              <div className="quote-header">
-                <span className="avatar avatar-bot">Z</span>
-                <div>
-                  <p className="font-bold text-accent-strong">
-                    Trợ lý ZicZord <span className="bot-badge">APP</span>
-                  </p>
-                  <p className="text-xs text-muted">trong #💬-chung</p>
-                </div>
+          <div className="problem-layout user-pain-layout">
+            <Reveal className="painpoint-person">
+              <div className="painpoint-photo">
+                <Image
+                  src="/images/duong-duc-minh.jpg"
+                  alt="Dương Đức Minh, học viên K4"
+                  fill
+                  sizes="(max-width: 760px) 100vw, 34vw"
+                />
               </div>
-              <blockquote>
-                “Mình chưa có đủ thông tin cho câu này, nên để đảm bảo chính xác, mình sẽ tag Mod giúp bạn nhé!”
-              </blockquote>
-              <div className="failure-result">
-                <span className="failure-pulse" />
-                <p>
-                  Mỗi câu recap lại quay về moderator. Nhu cầu thật đã xuất hiện, nhưng bot không có context.
-                </p>
+              <div className="painpoint-person-caption">
+                <div>
+                  <p className="painpoint-person-name">Dương Đức Minh</p>
+                  <p className="painpoint-person-role">Học viên K4, phỏng vấn người dùng</p>
+                </div>
+                <span>Voice of user</span>
               </div>
             </Reveal>
 
-            <Reveal className="context-fragment" delay={0.08}>
-              <p className="context-fragment-title">Một học viên đang sống trong nhiều context</p>
-              <div className="fragment-list">
-                {[
-                  ["T004", "quyết định và task của 4 thành viên"],
-                  ["G10", "feedback chung từ mentor"],
-                  ["Lec-D302", "nội dung bài giảng"],
-                  ["Lab-D304", "hướng dẫn thực hành"],
-                  ["K4", "thông báo, hỏi đáp, chia sẻ"],
-                ].map(([label, detail], index) => (
-                  <div key={label} className="fragment-row">
-                    <span className="fragment-index">{String(index + 1).padStart(2, "0")}</span>
-                    <div>
-                      <p className="font-bold">{label}</p>
-                      <p className="mt-1 text-sm text-muted">{detail}</p>
-                    </div>
-                  </div>
-                ))}
+            <Reveal className="painpoint-quote" delay={0.08}>
+              <div className="painpoint-quote-meta">
+                <span>Quan sát thực tế</span>
+                <span>Discord K4</span>
+              </div>
+              <blockquote>
+                <p>
+                  “Kute khá ổn ở việc cung cấp thông tin chương trình, nhưng chưa có cơ chế
+                  <mark> hiểu cuộc trò chuyện để tóm tắt</mark>.”
+                </p>
+              </blockquote>
+
+              <div
+                className="painpoint-shift"
+                role="group"
+                aria-label="Khoảng dịch chuyển sản phẩm"
+              >
+                <div>
+                  <span>Hiện tại</span>
+                  <strong>Tra cứu thông tin</strong>
+                </div>
+                <ArrowRight size={18} weight="bold" aria-hidden="true" />
+                <div>
+                  <span>Nhu cầu</span>
+                  <strong>Hiểu và tóm tắt hội thoại</strong>
+                </div>
+                <ArrowRight size={18} weight="bold" aria-hidden="true" />
+                <div className="painpoint-shift-target">
+                  <ZicZordAvatar className="painpoint-ziczord-avatar" />
+                  <span>Sản phẩm</span>
+                  <strong>ZicZord Catch-up Copilot</strong>
+                </div>
               </div>
             </Reveal>
           </div>
@@ -423,14 +436,14 @@ export function PitchDeck() {
               Mở @ZicZordAI20K4Bot
               <ArrowRight size={17} weight="bold" />
             </a>
-            <div className="telegram-capabilities" aria-label="Khả năng Telegram">
+            <div className="telegram-capabilities" role="list" aria-label="Khả năng Telegram">
               {[
                 "Daily brief 24 giờ",
                 "Context đúng team",
                 "Citation Discord",
                 "Lưu log để cải thiện",
               ].map((item) => (
-                <span key={item}>
+                <span key={item} role="listitem">
                   <Check size={13} weight="bold" />
                   {item}
                 </span>
@@ -440,26 +453,31 @@ export function PitchDeck() {
 
           <Reveal className="telegram-phone" delay={0.08}>
             <div className="telegram-phone-head">
-              <span className="telegram-avatar">Z</span>
+              <ZicZordAvatar className="telegram-avatar-image" />
               <div>
                 <p>ZicZord</p>
-                <span>bot · online</span>
+                <span>@ZicZordAI20K4Bot</span>
               </div>
               <TelegramLogo size={24} weight="fill" />
             </div>
-            <div className="telegram-chat-preview">
-              <p className="telegram-bubble telegram-bubble-user">
-                Workshop hôm qua có gì quan trọng?
-              </p>
-              <div className="telegram-bubble telegram-bubble-bot">
-                <strong>Bạn cần biết</strong>
-                <span>Workshop nhắc setup AI Log Hook trước khi submit prompt.</span>
-                <span className="telegram-source">Xem nguồn Discord ↗</span>
-              </div>
-            </div>
+            <a
+              href={telegramBotUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="telegram-qr-link"
+              aria-label="Mở ZicZord trên Telegram"
+            >
+              <Image
+                src="/images/telegram-qr.png"
+                alt="Mã QR mở bot ZicZord trên Telegram"
+                width={1000}
+                height={1000}
+                sizes="(max-width: 720px) 82vw, 410px"
+              />
+            </a>
             <div className="telegram-privacy">
               <ShieldCheck size={16} weight="fill" />
-              Private chat · scope server-side · không đọc chéo team
+              Private chat, kiểm tra scope ở backend, không đọc chéo team
             </div>
           </Reveal>
         </div>

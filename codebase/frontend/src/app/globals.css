@@ -306,15 +306,10 @@ button:disabled {
   color: #229ed9;
 }
 
-.telegram-avatar {
-  display: grid;
+.avatar.telegram-avatar-image {
   width: 2.7rem;
   height: 2.7rem;
-  place-items: center;
   border-radius: 13px;
-  background: var(--accent);
-  color: #14200d;
-  font-weight: 900;
 }
 
 .telegram-phone-head p {
@@ -327,49 +322,32 @@ button:disabled {
   font-size: 0.62rem;
 }
 
-.telegram-chat-preview {
-  display: flex;
-  min-height: 430px;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 0.8rem;
-  border-radius: 22px;
-  background:
-    linear-gradient(color-mix(in srgb, var(--line) 17%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--line) 17%, transparent) 1px, transparent 1px),
-    var(--paper);
-  background-size: 32px 32px;
-  padding: 1.2rem;
-}
-
-.telegram-bubble {
-  max-width: 88%;
+.telegram-qr-link {
+  display: block;
+  overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 17px;
-  padding: 0.8rem 0.9rem;
-  font-size: 0.82rem;
-  line-height: 1.55;
+  border-radius: 22px;
+  background: #f8faf7;
+  padding: 0.75rem;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
 }
 
-.telegram-bubble-user {
-  align-self: flex-end;
-  border-bottom-right-radius: 5px;
-  background: color-mix(in srgb, #229ed9 15%, var(--surface));
+.telegram-qr-link:hover {
+  box-shadow: 0 18px 45px color-mix(in srgb, var(--ink) 13%, transparent);
+  transform: translateY(-2px);
 }
 
-.telegram-bubble-bot {
-  display: grid;
-  align-self: flex-start;
-  gap: 0.45rem;
-  border-bottom-left-radius: 5px;
-  background: var(--surface);
+.telegram-qr-link:active {
+  transform: translateY(0) scale(0.99);
 }
 
-.telegram-source {
-  margin-top: 0.2rem;
-  color: var(--accent-strong);
-  font-size: 0.68rem;
-  font-weight: 750;
+.telegram-qr-link img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
 }
 
 .telegram-privacy {
@@ -411,9 +389,6 @@ button:disabled {
     transform: none;
   }
 
-  .telegram-chat-preview {
-    min-height: 360px;
-  }
 }
 
 .nav-link:hover {
@@ -645,6 +620,168 @@ button:disabled {
   grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.75fr);
   gap: 1rem;
   margin-top: 3.5rem;
+}
+
+.user-pain-layout {
+  grid-template-columns: minmax(280px, 0.48fr) minmax(0, 1.52fr);
+}
+
+.painpoint-person,
+.painpoint-quote {
+  min-height: 510px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+.painpoint-person {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--surface-strong);
+}
+
+.painpoint-person::after {
+  position: absolute;
+  z-index: 1;
+  inset: 35% 0 0;
+  background: linear-gradient(to bottom, transparent, rgba(15, 20, 18, 0.82));
+  content: "";
+  pointer-events: none;
+}
+
+.painpoint-photo {
+  position: absolute;
+  inset: 0;
+}
+
+.painpoint-photo img {
+  object-fit: cover;
+  object-position: 50% 48%;
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.painpoint-person:hover .painpoint-photo img {
+  transform: scale(1.025);
+}
+
+.painpoint-person-caption {
+  position: absolute;
+  z-index: 2;
+  right: 1.25rem;
+  bottom: 1.2rem;
+  left: 1.25rem;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #f7faf4;
+}
+
+.painpoint-person-name {
+  font-size: 1rem;
+  font-weight: 780;
+  letter-spacing: -0.025em;
+}
+
+.painpoint-person-role {
+  margin-top: 0.28rem;
+  color: rgba(247, 250, 244, 0.72);
+  font-size: 0.67rem;
+}
+
+.painpoint-person-caption > span {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.62rem;
+}
+
+.painpoint-quote {
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 88% 15%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 16rem),
+    var(--surface);
+  padding: clamp(1.5rem, 3vw, 2.6rem);
+}
+
+.painpoint-quote-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.painpoint-quote blockquote {
+  display: grid;
+  flex: 1;
+  align-content: center;
+  max-width: 920px;
+  margin-block: 1.4rem;
+}
+
+.painpoint-quote blockquote p {
+  font-size: clamp(1.4rem, 2.4vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.04em;
+  text-wrap: pretty;
+}
+
+.painpoint-quote mark {
+  background: linear-gradient(
+    transparent 58%,
+    color-mix(in srgb, var(--accent) 64%, transparent) 58%
+  );
+  color: inherit;
+}
+
+.painpoint-shift {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) auto minmax(0, 1.15fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.15rem;
+}
+
+.painpoint-shift > div {
+  position: relative;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.painpoint-shift > svg {
+  color: var(--muted);
+}
+
+.painpoint-shift span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.painpoint-shift strong {
+  font-size: 0.73rem;
+  line-height: 1.3;
+}
+
+.painpoint-shift-target {
+  padding-left: 2.5rem;
+}
+
+.painpoint-shift-target strong {
+  color: var(--accent-strong);
+}
+
+.avatar.painpoint-ziczord-avatar {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1.9rem;
+  height: 1.9rem;
+  transform: translateY(-50%);
 }
 
 .failure-quote,
@@ -1540,6 +1677,18 @@ button:disabled {
   color: #16200f;
 }
 
+.avatar-image {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
+  background: var(--surface);
+}
+
+.avatar-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .avatar-user {
   background: var(--discord);
   color: white;
@@ -2191,6 +2340,27 @@ button:disabled {
     font-size: clamp(1.7rem, 8vw, 2.8rem);
   }
 
+  .painpoint-person {
+    min-height: min(125vw, 520px);
+  }
+
+  .painpoint-quote {
+    min-height: auto;
+    padding: 1.25rem;
+  }
+
+  .painpoint-quote blockquote p {
+    font-size: clamp(1.2rem, 6vw, 1.75rem);
+  }
+
+  .painpoint-shift {
+    grid-template-columns: 1fr;
+  }
+
+  .painpoint-shift > svg {
+    transform: rotate(90deg);
+  }
+
   .memory-banks {
     grid-template-columns: 1fr 1fr;
   }
@@ -2280,6 +2450,23 @@ button:disabled {
   .failure-quote blockquote {
     margin-top: 1.4rem;
     font-size: clamp(1.7rem, 2.7vw, 2.8rem);
+  }
+
+  .painpoint-person,
+  .painpoint-quote {
+    min-height: 390px;
+  }
+
+  .painpoint-quote {
+    padding: 1.35rem;
+  }
+
+  .painpoint-quote blockquote {
+    margin-block: 0.7rem;
+  }
+
+  .painpoint-quote blockquote p {
+    font-size: clamp(1.05rem, 1.6vw, 1.4rem);
   }
 
   .failure-result {
