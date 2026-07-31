@@ -38,6 +38,16 @@ class RAGAnythingGateway:
     def scope_keys(user: CommunityUser) -> list[str]:
         return sorted(f"{scope_type}:{scope_id}" for scope_type, scope_id in allowed_scope_keys(user))
 
+    @staticmethod
+    def is_no_context_answer(answer: str) -> bool:
+        """Reject provider abstentions before unrelated fallback citations leak out."""
+
+        normalized = re.sub(r"\s+", " ", answer).strip().casefold()
+        return bool(
+            re.search(r"\[\s*no[-_ ]?context\s*\]", normalized)
+            or "not able to provide an answer to that question" in normalized
+        )
+
     async def query(self, user: CommunityUser, query: str) -> RAGAnythingResult | None:
         if not self.configured:
             return None
@@ -57,7 +67,12 @@ class RAGAnythingGateway:
             sources = [RAGAnythingSource(**item) for item in body.get("sources", [])]
             answer = str(body.get("answer", "")).strip()
             scopes_queried = body.get("scopes_queried", [])
-            if not answer or not sources or not scopes_queried:
+            if (
+                not answer
+                or self.is_no_context_answer(answer)
+                or not sources
+                or not scopes_queried
+            ):
                 return None
             self.last_error = None
             self.last_success = True

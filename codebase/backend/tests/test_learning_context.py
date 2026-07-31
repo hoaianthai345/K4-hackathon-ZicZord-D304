@@ -132,6 +132,29 @@ def test_lesson_query_calls_local_learning_search_with_authorized_scopes():
     assert any(call.name == "search_learning_context" for call in result.calls)
 
 
+def test_generic_course_overview_routes_to_learning_context():
+    database = FakeDatabase()
+    service = ContextToolService(database)
+    user = user_record("U01862")
+    result = asyncio.run(
+        service.retrieve(
+            user,
+            "Mọi người học cái gì?",
+            "bot-commands",
+        )
+    )
+
+    assert result.plan.lesson_intent is True
+    assert result.should_answer_directly is True
+    assert database.learning_calls
+    assert database.message_calls == []
+    assert any(call.name == "search_learning_context" for call in result.calls)
+    assert not any(
+        call.name == "rag_anything_hybrid_search"
+        for call in result.calls
+    )
+
+
 def test_workshop_yesterday_routes_to_dated_event_context():
     database = FakeDatabase()
     service = ContextToolService(database)

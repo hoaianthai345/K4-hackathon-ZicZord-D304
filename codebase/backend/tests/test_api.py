@@ -20,6 +20,7 @@ from app.apify_gateway import normalize_apify_item
 from app.config import Settings
 from app.main import app, database, llm, rag, web_search
 from app.rag_anything_gateway import (
+    RAGAnythingGateway,
     RAGAnythingResult,
     RAGAnythingSource,
 )
@@ -489,6 +490,16 @@ def test_rag_query_and_chat_use_server_authorized_sources(monkeypatch):
     assert chat_payload["provider"] == "HKUDS/RAG-Anything@test"
     assert "SOURCE_ID" not in chat_payload["message"]["content"]
     assert chat_payload["message"]["citations"][0]["channel_id"] == "qa"
+
+
+def test_rag_provider_abstention_is_not_treated_as_grounded_answer():
+    assert RAGAnythingGateway.is_no_context_answer(
+        "Sorry, I'm not able to provide an answer to that question.[no-context]"
+    )
+    assert RAGAnythingGateway.is_no_context_answer("[NO_CONTEXT]")
+    assert not RAGAnythingGateway.is_no_context_answer(
+        "Các chủ đề chính là deadline và GitHub invite."
+    )
 
 
 def test_rag_source_is_redacted_and_scope_guarded(monkeypatch):

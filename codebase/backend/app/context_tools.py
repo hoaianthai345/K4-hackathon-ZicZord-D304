@@ -25,6 +25,12 @@ TIME_PATTERNS = (
 LESSON_TERMS = (
     "bài học",
     "bài giảng",
+    "học gì",
+    "học cái gì",
+    "học những gì",
+    "đang học gì",
+    "nội dung khóa học",
+    "khóa học dạy gì",
     "lý thuyết",
     "lecture",
     "transcript",
