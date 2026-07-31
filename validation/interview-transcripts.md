@@ -2,7 +2,7 @@
 
 **Ngày phỏng vấn:** 2026-07-30 → 2026-07-31
 **Phương pháp:** phỏng vấn 1-1 có ghi âm, transcribe + phân đoạn (loại đoạn lặp do lỗi copy).
-**Người phỏng vấn:** [tên thành viên nhóm]
+**Người phỏng vấn và tổng hợp transcript:** Trịnh Bá Khánh Trình (2A202601531)
 **Loại câu hỏi:** hành vi hiện tại + phản ứng với pitch bot Discord ↔ task tool.
 
 **Tổng: 5 người** (4 học viên K4 + 1 senior/mentor).

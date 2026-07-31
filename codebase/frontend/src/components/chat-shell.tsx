@@ -76,6 +76,8 @@ const BRIEF_LABELS = {
   blocker: "Blocker",
   announcement: "Thông báo",
 };
+const googleTasksLive =
+  process.env.NEXT_PUBLIC_GOOGLE_TASKS_MODE === "live";
 
 function initials(name: string) {
   return name
@@ -491,6 +493,17 @@ function TeamBriefPanel({
           <p className="mt-1 text-xs text-muted">
             {brief.summary} · {brief.source_message_count} nguồn · {brief.provider}
           </p>
+          {!isCatchup && (
+            <p
+              className={`mt-2 text-xs font-semibold ${
+                googleTasksLive ? "text-accent-strong" : "text-danger"
+              }`}
+            >
+              {googleTasksLive
+                ? "Google Tasks live · thao tác xác nhận sẽ ghi vào tài khoản Google."
+                : "Pitch-mock · thao tác xác nhận chỉ tạo bản nháp demo, chưa ghi vào tài khoản Google."}
+            </p>
+          )}
         </div>
         <span className="safe-badge">
           <ShieldCheck size={13} weight="fill" />
@@ -553,7 +566,9 @@ function TeamBriefPanel({
                     <Check size={14} weight="bold" />
                     {busyItemId === item.id
                       ? "Đang tạo task"
-                      : "Xác nhận & tạo Google Task"}
+                      : googleTasksLive
+                        ? "Xác nhận & tạo Google Task"
+                        : "Xác nhận & tạo bản nháp"}
                   </button>
                 )}
                 {synced && (

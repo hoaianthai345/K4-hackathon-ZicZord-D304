@@ -1,48 +1,64 @@
 # Survey log — Chuẩn A
 
-**Mục tiêu:** ≥20 người xác nhận pain "Discord bị underused vì thiếu task management".
-**Người điền:** [tên phụ trách evidence]
-**Nguồn transcript đầy đủ:** [interview-transcripts.md](interview-transcripts.md)
+**Ngày thu:** 31/07/2026 · **n = 24 người ngoài nhóm**
 
-## Câu hỏi chuẩn
+**Dữ liệu kiểm chứng:** [survey-responses-anonymized.csv](survey-responses-anonymized.csv)
 
-Xem `interview-script.md` §A. Cốt lõi: hỏi hành vi hiện tại + pain, không mớm giải pháp.
+**Bổ sung định tính:** 5 transcript phỏng vấn tại [interview-transcripts.md](interview-transcripts.md)
 
-## Bảng log (5/20 hoàn thành)
+Repo public chỉ lưu ID `F01–F24`; tên, mã học viên và timestamp trong bản xuất
+Google Form gốc được giữ ngoài repo để không công khai PII.
 
-| ID | Tên/vai | Nền tảng chat hiện tại | Tool task hiện tại | Pain nguyên văn | Sẽ dùng bot? | Willing test? | Xác nhận pain? |
-|---|---|---|---|---|---|---|---|
-| S01 | Đào Hoàng Duy (U01780) — K4 | Trello (không dùng Discord phân công) | Trello | *"Em sử dụng nền tảng khác ạ."* → chưa cảm thấy Discord đóng vai trò | ❌ *"chắc em sử dụng bên ngoài thôi"* | ⚠️ chưa hỏi | ✅ (không dùng Discord phân công) |
-| S02 | Đức Minh (U01306) — K4 | Messenger | Google Docs / Sheets | *"Không, mình bàn bạc trên Messenger."* — team nhỏ không cần bot | ⚠️ *"kha khá thôi... team nhỏ thì không cần"* | ⚠️ chưa hỏi | ✅ (không dùng Discord — chuyển tab qua Sheet) |
-| S03 | Nguyễn Văn Tuấn (U01246) — K4 | Discord + Google Sheets | Google Sheets | *"Trên Google Sheets"* — phải check song song 2 nơi | ✅ *"Mình thấy hợp lý"* + xin thêm 2-way sync Jira | ✅ | ✅ |
-| S04 | Senior/Mentor — K4 | Discord (với BTC) + Zalo (nội bộ) | Coute BTC (không đủ) | *"Coute chưa đủ dữ liệu... Đúng vai trò với ban tổ chức thôi. Với cá nhân học sinh thì chưa."* | ✅ *"đáng thử"* + cảnh báo false positive & memory scale | ✅ | ✅ (Coute gap + Zalo nội bộ) |
-| S05 | Lợi — K4 | Zalo (chính) + Discord (chỉ standup) | Không dùng tool nào | *"đang chỉ nhắn Zalo thôi."* — task quản lý ad-hoc trong chat | ✅ *"nếu làm được như thế thì tốt, mình sẽ sử dụng"* → *"sẽ quay lại Discord"* | ✅ | ✅✅ |
-| S06 |  |  |  |  |  |  |  |
-| S07 |  |  |  |  |  |  |  |
-| S08 |  |  |  |  |  |  |  |
-| S09 |  |  |  |  |  |  |  |
-| S10 |  |  |  |  |  |  |  |
-| S11 |  |  |  |  |  |  |  |
-| S12 |  |  |  |  |  |  |  |
-| S13 |  |  |  |  |  |  |  |
-| S14 |  |  |  |  |  |  |  |
-| S15 |  |  |  |  |  |  |  |
-| S16 |  |  |  |  |  |  |  |
-| S17 |  |  |  |  |  |  |  |
-| S18 |  |  |  |  |  |  |  |
-| S19 |  |  |  |  |  |  |  |
-| S20 |  |  |  |  |  |  |  |
+## Câu hỏi đã dùng
 
-## Tổng hợp (n=5)
+1. Bạn thường trao đổi công việc nhóm trên nền tảng nào?
+2. Team bạn đang quản lý công việc bằng công cụ nào?
+3. Bạn mất khoảng bao nhiêu thời gian mỗi tuần để tổng hợp hoặc tìm lại thông tin trong các cuộc trò chuyện?
+4. Theo bạn, khó khăn lớn nhất khi làm việc nhóm qua chat là gì?
+5. Nếu có một AI tự đọc cuộc trò chuyện, đề xuất Task – Owner – Deadline và bạn chỉ cần bấm Xác nhận để lưu sang Trello/Jira, bạn có muốn sử dụng không?
+6. Bạn mong AI hỗ trợ tính năng nào nhất?
+7. Điều gì khiến bạn lo ngại khi dùng AI này?
 
-- **Số người trả lời:** 5/20 (chưa đủ chuẩn A cần ≥20)
-- **Số người xác nhận pain đã định nghĩa:** **5/5 = 100%** ≥ ngưỡng 50% ✓
-- **Số người sẽ dùng bot:** 3/5 = 60% ≥ 50% ✓ (Tuấn, Mentor, Lợi)
-- **Số willing users tên thật:** 3 (Tuấn 1246, Mentor, Lợi) — đủ tiêu chí 5 nghiệm thu ✓
-- **Chủ đề lặp nhiều nhất:** Discord bị underused vì thiếu tool quản lý task — phần lớn chuyển sang Zalo/Messenger/Trello/Sheets
-- **Bằng chứng cost-of-error mạnh nhất:** Mentor cảnh báo *"AI làm sai sẽ khiến người dùng cảm thấy mất công chui vào check và xóa"* → **automation phải có confirm step**
+## Cách đếm và kết quả
 
-## Kế hoạch điền tiếp
+**Con số pain chính: 17/24 = 70,8%.** Lọc cột `time_per_week`, đếm các
+response khác `Dưới 10 phút`: 10 người chọn 10–30 phút, 5 người chọn 30–60
+phút và 2 người chọn trên 1 giờ. Như vậy hơn 50% người được hỏi mất ít nhất 10
+phút mỗi tuần chỉ để tổng hợp hoặc tìm lại thông tin trong chat.
 
-- Ngày 2 giờ nghỉ: 15 người tiếp — target hỏi các bạn khác team, khác cohort để đa dạng segment.
-- Segment cần hỏi thêm: (1) team đã dùng Jira/Notion nghiêm túc — chuyển sang được không? (2) học viên năm 1/2 mới học Discord.
+**Ý định sử dụng: 20/24 = 83,3%.** Đếm 6 `Chắc chắn có` + 14 `Có thể`; không
+gộp 2 `Chưa chắc`, 1 `Có thể không` và 1 `Chắc chắn không`.
+
+| Chỉ số | Kết quả | Cách kiểm chứng |
+|---|---:|---|
+| Dùng Discord để trao đổi | 13/24 (54,2%) | Đếm `platform=Discord` |
+| Dùng Zalo để trao đổi | 11/24 (45,8%) | Đếm `platform=Zalo` |
+| Dùng Sheets/Jira/Notion/Trello | 22/24 (91,7%) | Đếm `task_tool` không phải `Chưa dùng/Không dùng` |
+| Trả lời pain bằng văn bản | 16/24 (66,7%) | Đếm `pain_verbatim` không rỗng |
+| Lo AI nhận diện sai | 14/24 (58,3%) | Đếm `concern=AI nhận diện sai` |
+| Muốn tóm tắt cuộc họp | 17/24 (70,8%) | Tách `desired_features` theo dấu `;` |
+| Muốn nhắc deadline | 16/24 (66,7%) | Tách `desired_features` theo dấu `;` |
+| Muốn tự động tạo task | 13/24 (54,2%) | Tách `desired_features` theo dấu `;` |
+
+## Ví dụ nguyên văn
+
+- F01: “Đoạn chat cần thiết sẽ bị trôi khi mọi người thảo luận nhóm, muốn xem lại thì mấy thời gian.”
+- F04: “Tin nhắn quan trọng bị trôi.”
+- F10: “Miss tin nhắn.”
+- F18: “Miss nhiều tin nhắn.”
+- F21: “Hay bị miss tin nhắn.”
+- F22: “Mình nghĩ là sẽ mất thời gian để tìm lại thông tin khi cần do tin nhắn bị trôi, đôi khi miss thông tin mới nhất và làm việc dựa trên thông tin cũ.”
+
+## Đối chiếu với 5 phỏng vấn
+
+- 5/5 người phỏng vấn đang dùng nền tảng/tool khác cho việc nhóm; 3/5 nói sẽ dùng thử giải pháp.
+- Tuấn muốn sửa trực tiếp sang task tool; Lợi nói sẽ quay lại Discord.
+- Mentor cảnh báo false positive làm người dùng phải dọn task sai. Vì vậy sản
+  phẩm chỉ **propose**, luôn cần người dùng xác nhận trước khi write.
+
+## Giới hạn bằng chứng
+
+Form được phát trong cùng cộng đồng K4 và câu hỏi ý định sử dụng có mô tả giải
+pháp, nên dùng kết quả 20/24 để chứng minh **willingness**, không dùng nó thay
+cho quan sát hành vi. Con số 17/24 từ thời gian tìm lại thông tin và transcript
+1-1 là bằng chứng pain chính.

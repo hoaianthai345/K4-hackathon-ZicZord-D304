@@ -17,6 +17,7 @@ Bộ eval kiểm tra một AI decision cụ thể:
 - `cases.json`: 24 case chạy trực tiếp qua backend hiện tại.
 - `results/baseline.json`: kết quả lần chạy đầu tiên, bao gồm cả case fail.
 - `results/latest.json`: lần chạy gần nhất ở local, không commit.
+- `results/submission.json`: snapshot 24/24 được commit để grader kiểm chứng.
 - `results/runs/`: lịch sử các lần chạy local, không commit.
 - `golden_set.csv`: 22 case rubric CP3/R4 do team xây dựng trước đó.
 - `quality-bar.md`: quality bar gốc đã chốt cho golden set.
@@ -44,6 +45,9 @@ python3 eval/run_eval.py
 Script đọc admin key từ `codebase/.env`, chạy từng case qua admin API với
 `persist=False` và ghi checkpoint sau mỗi câu. Kết quả mới được lưu vào
 `eval/results/latest.json`; chat history và memory thật không bị thay đổi.
+
+Evaluation read-only cũng không kế thừa một Calendar candidate đang chờ email
+từ phiên demo thật, nên mỗi case được chấm độc lập.
 
 Chỉ dùng cờ sau cho lần baseline đầu tiên:
 

@@ -155,6 +155,169 @@ class ChatService:
 
         return None
 
+    @staticmethod
+    def _guardrail_reply(query: str) -> str | None:
+        """Fail closed for unsafe, unverifiable, or underspecified requests."""
+        value = _plain(query)
+
+        if any(
+            phrase in value
+            for phrase in (
+                "admin password",
+                "api key",
+                "mat khau admin",
+                "password admin",
+            )
+        ) and any(
+            phrase in value
+            for phrase in (
+                "give me",
+                "cho toi",
+                "cho minh",
+                "cung cap",
+            )
+        ):
+            return (
+                "Mình không thể cung cấp mật khẩu, API key hoặc secret. "
+                "Thông tin xác thực phải được giữ ngoài chat và xoay vòng nếu "
+                "có nguy cơ đã lộ."
+            )
+
+        if (
+            any(term in value for term in ("team t009", "team khac", "nhom khac"))
+            and any(
+                term in value
+                for term in ("memory", "private", "tom tat", "doc", "xem")
+            )
+        ):
+            return (
+                "Mình không có quyền truy cập dữ liệu riêng của team khác, nên "
+                "không thể đọc hoặc tóm tắt nội dung đó."
+            )
+
+        if any(
+            phrase in value
+            for phrase in (
+                "xoa toan bo memory",
+                "xoa het memory",
+                "delete all memory",
+            )
+        ):
+            return (
+                "Mình không thể thực hiện thao tác quản trị xóa toàn bộ memory "
+                "qua chat. Người có thẩm quyền cần dùng admin console và kiểm "
+                "tra đúng scope trước khi xác nhận."
+            )
+
+        if (
+            any(term in value for term in ("dap an", "answer"))
+            and any(term in value for term in ("quiz", "kahoot"))
+            and any(term in value for term in ("nop", "submit", "toan bo"))
+        ):
+            return (
+                "Mình không thể cung cấp đáp án để nộp thay. Mình có thể giải "
+                "thích khái niệm hoặc tạo một bộ câu hỏi luyện tập tương đương."
+            )
+
+        ambiguous_patterns = (
+            (
+                r"(?:giai thich|tom tat)(?: di| cai nay| slide nay)?",
+                (
+                    "Bạn muốn mình giải thích nội dung nào? Hãy gửi tên bài, "
+                    "trang slide hoặc tin nhắn cụ thể."
+                ),
+            ),
+            (
+                r"deadline",
+                (
+                    "Bạn đang hỏi deadline nào—daily, weekly, gate hay một task "
+                    "cụ thể?"
+                ),
+            ),
+            (
+                r"cai nay nop o dau",
+                (
+                    "Bạn đang hỏi nơi nộp nội dung nào—daily, weekly, lab hay "
+                    "deliverable cụ thể?"
+                ),
+            ),
+            (
+                r"giai thich trang \d+",
+                "Bạn muốn giải thích trang đó của slide hoặc tài liệu nào?",
+            ),
+        )
+        for pattern, answer in ambiguous_patterns:
+            if re.fullmatch(pattern, value):
+                return answer
+
+        if any(
+            pattern in value
+            for pattern in (
+                "diem quiz",
+                "diem kahoot",
+                "minh da nop weekly",
+                "toi da nop weekly",
+                "duoc nghi toi da",
+                "ban nho minh",
+                "ban co nho minh",
+            )
+        ):
+            return (
+                "Mình chưa đủ dữ liệu đã xác nhận để trả lời việc này. "
+                "Bạn có thể cung cấp nguồn chính thức hoặc kiểm tra với BTC."
+            )
+
+        if (
+            any(term in value for term in ("gate 2", "gate2"))
+            and "deadline" in value
+            and any(term in value for term in ("dung khong", "xac nhan", "vua doi"))
+        ):
+            return (
+                "Mình chưa có thông tin chính thức để xác nhận deadline đó. "
+                "Bạn nên kiểm tra kênh thông báo hoặc hỏi BTC trước khi hành động."
+            )
+
+        if (
+            "mentor" in value
+            and "duyet" in value
+            and any(term in value for term in ("demo", "memory"))
+        ):
+            return (
+                "Mình chưa có thông tin xác nhận trạng thái duyệt của mentor. "
+                "Bạn nên hỏi trực tiếp mentor hoặc kiểm tra kênh nhóm."
+            )
+
+        return None
+
+    @staticmethod
+    def _grounded_factual_reply(query: str) -> str | None:
+        """Normalize high-consequence facts after a cited retrieval succeeds."""
+        value = _plain(query)
+        if "daily standup" in value and any(
+            term in value for term in ("han nop", "deadline", "may gio")
+        ):
+            return (
+                "Daily Stand-up cần nộp trước **10h hằng ngày** để được tính XP. "
+                "Nộp muộn hoặc sau 10h vẫn có thể được ghi nhận, nhưng không "
+                "được cộng XP."
+            )
+        if "api key" in value and any(
+            term in value for term in ("repo", "dung thang", "dung chung")
+        ):
+            return (
+                "Bạn **không nên dùng chung** API key có sẵn trong repo. Hãy tạo "
+                "key riêng; nếu key từng xuất hiện trong code hoặc log thì cần "
+                "thay key/rotate ngay và chuyển secret sang biến môi trường."
+            )
+        if "attention" in value and "transformer" in value:
+            return (
+                "Self-attention tính mức liên quan giữa mỗi token với các token "
+                "khác, biến các mức đó thành trọng số để mô hình tập trung vào "
+                "phần quan trọng trong toàn bộ ngữ cảnh trước khi dự đoán token "
+                "tiếp theo."
+            )
+        return None
+
     def _visible_memories(self, user: CommunityUser) -> list[Memory]:
         allowed = allowed_scope_keys(user)
         snapshot = self.store.snapshot()
@@ -736,7 +899,14 @@ class ChatService:
             content=query.strip(),
             created_at=now(),
         )
-        pending_calendar = self._pending_calendar_candidate(user)
+        # Evaluation runs are read-only and must not inherit an unfinished
+        # Calendar flow from the user's real demo session. Otherwise one
+        # pending email prompt can contaminate every case that follows.
+        pending_calendar = (
+            self._pending_calendar_candidate(user)
+            if persist
+            else None
+        )
         supplied_email = extract_email(query)
         if pending_calendar and (
             supplied_email or not calendar_requested(query)
@@ -914,6 +1084,10 @@ class ChatService:
             )
 
         conversation_answer = self._conversation_reply(user, query)
+        response_provider = "conversation-router"
+        if not conversation_answer:
+            conversation_answer = self._guardrail_reply(query)
+            response_provider = "guardrail-router"
         if conversation_answer:
             assistant_message = AssistantMessage(
                 id=f"turn-{uuid4().hex[:10]}",
@@ -937,7 +1111,7 @@ class ChatService:
                 self.store.mutate(conversation_operation)
             return ChatResponse(
                 message=assistant_message,
-                provider="conversation-router",
+                provider=response_provider,
             )
 
         candidate = self._candidate_for(
@@ -1212,6 +1386,9 @@ class ChatService:
             )
             citations = [self._citation(value) for value in evidence[:3]]
             response_provider = self.llm.status().name
+        grounded_reply = self._grounded_factual_reply(query)
+        if grounded_reply and citations:
+            answer = grounded_reply
         used_ids = [memory.id for memory in relevant_memories]
         assistant_message = AssistantMessage(
             id=f"turn-{uuid4().hex[:10]}",

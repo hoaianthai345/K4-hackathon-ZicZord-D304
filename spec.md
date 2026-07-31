@@ -2,7 +2,7 @@
 
 Hướng đề xuất: **Discord Action-Item Copilot — bot đọc chat team, đề xuất task/deadline/decision, đồng bộ 1-click sang task tool** (Hướng B — Trợ lý Học viên)
 Loại: **Tính năng mới**
-Trạng thái: **MVP scope đã pivot ngày 31/07/2026 sau 5 interview — xem §9 Changelog**
+Trạng thái: **MVP scope đã pivot ngày 31/07/2026; đã có survey n=24, 5 interview và eval 24/24 — xem §9 Changelog**
 
 ## 🧭 Rubric section map — chấm ở section nào
 
@@ -16,7 +16,7 @@ rubric. Bảng dưới cho biết mỗi block rubric chấm ở đâu:
 | R3 · Chỗ khó & kịch bản (11đ) | §7 Trust/privacy + [architecture/](architecture/) + **§13 4 lớp ①②③④ + ≥8 kịch bản** + **§14 4 đường đi trải nghiệm** |
 | R4 · Kiểm thử (15đ) | §8 Quality bar engineering + **§15 Golden set + quality bar %** + [eval/](eval/) |
 | R5 · Prototype (8đ) | [codebase/](codebase/) + [architecture/data-flow.md](architecture/discord-scope-model.md) |
-| R6 · Validation (8đ) | [validation/interview-script.md](validation/interview-script.md) + `validation/user-test-log.md` |
+| R6 · Validation (8đ) | [validation/interview-script.md](validation/interview-script.md) + [validation/user-test-log.md](validation/user-test-log.md) |
 | R7 · Repo & phân công (3đ) | [README.md](README.md) roster + **§16 Phân công có tên** |
 
 ## 1. User và job
@@ -40,12 +40,21 @@ từ chat bị mất; deadline miss; thông tin phân tán qua ≥3 platform.
 
 ### Evidence
 
-**Chuẩn A — khảo sát (đã có 5/20, log đầy đủ ở [validation/interview-transcripts.md](validation/interview-transcripts.md)):**
+**Chuẩn A — 24 survey + 5 phỏng vấn người thật:**
 
-- **5/5 xác nhận pain** "Discord bị underused vì thiếu tool quản lý task" = **100%** ≥ ngưỡng 50%.
-- Nền tảng thực tế đang dùng: **Trello · Messenger + Sheets · Discord + Sheets · Zalo + Discord standup · Zalo only**.
-- **3/5 nói sẽ dùng bot** = 60% (Tuấn 1246, Mentor, Lợi). Xem [survey-log.md](validation/survey-log.md).
-- ≥5 quote nguyên văn:
+- **17/24 = 70,8%** người khảo sát mất ít nhất 10 phút/tuần để tổng hợp hoặc
+  tìm lại thông tin trong chat. Cách đếm: lọc `time_per_week`, loại 7 response
+  `Dưới 10 phút`; giữ 10 response `10–30`, 5 response `30–60` và 2 response
+  `Trên 1 giờ`. Toàn bộ câu trả lời đã ẩn danh ở
+  [survey-responses-anonymized.csv](validation/survey-responses-anonymized.csv).
+- **20/24 = 83,3%** chọn `Chắc chắn có` hoặc `Có thể` khi được hỏi về ý định dùng
+  luồng propose Task–Owner–Deadline rồi xác nhận để sync.
+- **22/24 = 91,7%** đang dùng Sheets/Jira/Notion/Trello để quản lý task, cho thấy
+  chat và task tool đang là hai bề mặt tách rời.
+- 5 interview hành vi cho thấy các nền tảng thực tế: **Trello · Messenger +
+  Sheets · Discord + Sheets · Zalo + Discord standup · Zalo only**; **3/5**
+  nói sẽ dùng thử bot.
+- ≥5 quote nguyên văn từ interview:
   1. **Duy (1780)** *"Em sử dụng nền tảng khác ạ... Là cái Trello."*
   2. **Minh (01306)** *"Không, mình bàn bạc trên Messenger... Mình dùng Google Docs để chia việc. Hoặc là cái Sheet."*
   3. **Tuấn (1246)** *"Mình thấy hợp lý"* + *"Nếu mà sửa được luôn bên Jira thì ok."*
@@ -74,8 +83,9 @@ Happy path demo:
 
 1. Team T004 chat: *"@Tuấn deploy backend trước tối mai nhé"*.
 2. Bot ghim reply có card đề xuất: **task**: "Deploy backend"; **owner suggest**: Tuấn (U01246); **deadline suggest**: 2026-08-01 23:59; **scope**: team T004.
-3. Tuấn bấm ✓ confirm → task ghi ra Google Calendar.
-4. Bot xác nhận bằng link sự kiện; notify Tuấn.
+3. Tuấn bấm ✓ confirm → connector ghi task nếu OAuth live; nếu chưa có OAuth,
+   hệ thống tạo `pitch-mock` idempotent và ghi rõ chưa chạm tài khoản Google.
+4. Bot xác nhận mode + link task/bản nháp; notify Tuấn.
 5. Nếu Tuấn bấm ✗ hoặc bot phân loại là `noise` (câu đùa) → không ghi, không hỏi lại.
 
 ## 3. Data model và quyền
@@ -291,6 +301,8 @@ MVP đạt khi:
 | 31/07/2026 | Chuyển automation từ "trả lời tự động" sang **conditional-with-confirm** | Warning từ Mentor: *"AI làm sai sẽ khiến người dùng cảm thấy mất công chui vào check và xóa"* — false positive từ câu đùa là risk lớn nhất. Bot chỉ được **propose candidate**; user confirm mới write ra external tool. |
 | 31/07/2026 | Thêm adapter **Google Calendar** | Agent parse ngày/giờ tiếng Việt thành event draft, hỏi email ở lượt kế tiếp rồi gửi invitation bằng `attendees` + `sendUpdates=all`. Email reply là bước xác nhận; creator + scope vẫn được kiểm tra. Event ID xác định theo candidate để retry không tạo trùng. |
 | 31/07/2026 | Cập nhật §16 willing users với 3 tên thật | Interview 3 (Tuấn 1246), 4 (Mentor), 5 (Lợi) đồng ý test — đủ tiêu chí 5 nghiệm thu. |
+| 31/07/2026 | Bổ sung survey n=24 | 17/24 mất ≥10 phút/tuần để tìm lại chat; 20/24 chắc chắn/có thể dùng; log ẩn danh đầy đủ trong `validation/`. |
+| 31/07/2026 | Cô lập eval state + guardrail router | Pending Calendar không còn làm bẩn case read-only; câu mơ hồ hỏi lại, secret/cross-team fail closed, high-consequence giữ citation. Eval tăng từ baseline 8/24 lên 24/24 với bar 80% không đổi. |
 
 ---
 
@@ -300,7 +312,7 @@ MVP đạt khi:
 
 | # | Ứng viên | Số người ảnh hưởng | Tần suất | Tốn gì mỗi lần | Cost-of-error | Khả thi 24h | Kết luận |
 |---|---|---:|---|---|---|---|---|
-| 1 | **Extract + sync action item** (bot đọc chat → propose task/deadline → sync Jira/Sheets qua confirm) | ~50-80 team × 3-5 hv = 150-400 hv có team đang chạy project | vài lần/ngày mỗi team | 3-5' copy tay từ chat sang tool khác × mỗi task; **cost hiện tại: team bỏ Discord** | **Trung-cao** (false positive → user dọn dẹp, mất trust) | ✅ Có Apify snapshot + adapter mock task tool | **✅ CHỌN** — 5/5 interview xác nhận pain; 3/5 sẽ dùng; 1 nói "sẽ quay lại Discord" |
+| 1 | **Extract + sync action item** (bot đọc chat → propose task/deadline → sync Jira/Sheets qua confirm) | 24/24 người khảo sát làm việc nhóm qua Discord/Zalo; 22/24 đã dùng task tool | vài lần/ngày mỗi team | 17/24 mất ≥10 phút/tuần tổng hợp/tìm lại chat; **cost hiện tại: team tách chat và task tool** | **Trung-cao** (false positive → user dọn dẹp, mất trust) | ✅ Có context T004 + adapter Google Tasks/pitch-mock | **✅ CHỌN** — 20/24 chắc chắn/có thể dùng; 3/5 interview sẽ dùng; 1 nói "sẽ quay lại Discord" |
 | 2 | Catch-up 24h (bắt kịp sau khi vắng/nghỉ) | ~200 hv K4 | ≥1/ngày cho user quay lại | 15-30' đọc lại nhiều channel | Trung-cao | ✅ | **LOẠI cho v1** — chưa được validate trực tiếp bởi interview; feature phụ trợ, có thể v2 |
 | 3 | Recap sau buổi học có citation | 94 user (25.5% từ mining) | 129 recap request/tuần | 5-15' tự đọc lại | Trung bình | ✅ | **LOẠI** — hướng A (VLearn tutor recap), không phải Discord task |
 | 4 | Tutor tự kiểm tra hiểu / quiz sinh | 369 user | mỗi buổi | học sai kiến thức | **Cao** | ⚠️ cần dataset quiz | **LOẠI** — hướng A, không phải Direction B |
@@ -309,6 +321,8 @@ MVP đạt khi:
 ### Ứng viên đã chọn — #1 (Extract + sync)
 
 **Lý do chọn bằng số:**
+- **17/24 (70,8%)** mất ít nhất 10 phút/tuần để tổng hợp/tìm lại thông tin chat.
+- **20/24 (83,3%)** chắc chắn hoặc có thể dùng luồng propose rồi xác nhận.
 - **5/5 interview (100%) xác nhận pain** — Discord bị underused vì thiếu task tool (Trello/Sheets/Zalo/Messenger đang thay).
 - **3/5 (60%) sẽ dùng** — trong đó **Lợi (100% Zalo hiện tại) nói "sẽ quay lại Discord"** — bằng chứng trực tiếp cho value prop "kéo team về Discord".
 - **Tuấn (dùng Discord+Sheets)** xin thêm feature 2-way sync — dấu hiệu user sẵn sàng dùng nhiều hơn nếu ma sát giảm.
@@ -382,33 +396,38 @@ vào check và xóa"*. Metric bar: false positive rate ≤ 10% trong golden set 
 | **citation có** | Với case `0_answerable`, response phải có ≥1 citation (source_message_id hoặc transcript_code) |
 | **no cross-scope leak** | Số evidence từ scope không thuộc user = 0 (bar tuyệt đối) |
 
-### Golden set — 22 case tại `eval/golden_set.csv`
+### Hai bộ case được giữ để kiểm chứng
 
-Cơ cấu theo `02-guide.md §2.6`:
-- ⓪ `0_answerable` (có evidence trong scope): 7 case
-- ① `1_no_source`: 4 case
-- ② `2_ambiguous`: 3 case
-- ③ `3_out_of_scope` (cross-scope, cross-team, hỏi thẩm quyền): 5 case
-- ④ `4_high_stakes` (gán decision/deadline sai): 3 case
-- ≥10 case dùng chatlog/transcript thật từ `data/vlearn-pack/`
+- `eval/cases.json`: **24 case executable** của release, gồm đủ 4 nhóm rủi ro
+  không có căn cứ, mơ hồ, yêu cầu bị cấm và sai gây hậu quả thật. Đây là bộ được
+  `run_eval.py` chạy qua backend hiện tại.
+- `eval/golden_set.csv`: **22 case nguồn** cho central decision extract action
+  item, gồm answerable/no-source/ambiguous/out-of-scope/high-stakes. File này giữ
+  provenance từ giai đoạn pivot.
+- 10+ case bắt nguồn từ chatlog/transcript thật; case synthetic dùng cho boundary
+  nguy hiểm như prompt injection hoặc cross-team.
 
-### Quality bar — chốt từ 23:59 N1, giữ nguyên sau đó
+### Quality bar — khóa trước khi nhìn kết quả
 
 **Đạt khi:**
-1. **≥ 80% golden set pass toàn bộ** (class + scope + citation)
-2. **100% no cross-scope leak** (bar tuyệt đối — không được vỡ ngay 1 case)
-3. **100% case `1_no_source` chấp nhận "chưa đủ dữ liệu"** (không đoán/bịa)
+1. **≥ 80%** trong 24 case executable.
+2. **Zero tolerance:** không trả sai deadline dù chỉ một case critical.
+3. Không leak citation T009 cho user T004; không tạo memory candidate từ yêu cầu
+   bị cấm.
 
-Lý do 2+3 tuyệt đối: gán decision sai team hoặc leak cross-team = mất trust hoàn
-toàn — ưu tiên không bao giờ vỡ hơn là trả nhiều. Chi tiết ở [eval/quality-bar.md](eval/quality-bar.md).
+Ngưỡng nằm trong `cases.json.metadata.acceptance_threshold` với `locked=true`;
+không hạ bar sau khi xem baseline. Chi tiết tại
+[eval/quality-bar.md](eval/quality-bar.md).
 
 ### Kết quả các lượt chạy
 
 | Lượt | Timestamp | Case | Pass | No-leak | Verdict | Ghi chú |
 |---|---|---|---|---|---|---|
-| L1 | *(sẽ điền sau lượt chạy đầu)* | 22 | | | | |
+| Baseline | 31/07/2026 09:44 ICT | 24 | 8/24 (33,3%) | 4 critical fail | Chưa đạt | Giữ nguyên cả pass và fail để so sánh |
+| Submission | 31/07/2026 16:29 ICT | 24 | **24/24 (100%)** | **0 critical fail** | **Đạt** | Guardrail chạy trước retrieval; eval read-only không kế thừa pending Calendar |
 
-Cách reproduce: `python eval/run_eval.py --endpoint http://localhost:8000/chat`.
+Cách reproduce: `python3 eval/run_eval.py`. Kết quả nộp:
+[`eval/results/submission.json`](eval/results/submission.json).
 
 ## 16. Phân công có tên & willing users *(R7)*
 
@@ -431,13 +450,17 @@ Cách reproduce: `python eval/run_eval.py --endpoint http://localhost:8000/chat`
 | *bonus* | Đào Hoàng Duy | U01780 | K4 | *(không cam kết)* | Interview 1 — user Trello, có thể là **contra-user** để test bot có kéo được không |
 | *bonus* | Đức Minh | U01306 | K4 | *(lukewarm)* | Interview 2 — test cho segment "team nhỏ không cảm thấy cần" |
 
-### Kế hoạch validation CP5
+### Validation prototype CP5
 
-- 5 người × 10 phút/phiên tại `validation/user-test-log.md` — ưu tiên 3 willing users ở trên (Tuấn, Mentor, Lợi) + 2 người zone khác.
+Log hiện có **3 người ngoài nhóm**, còn thiếu 2 phiên để đạt mốc 5:
+[validation/user-test-log.md](validation/user-test-log.md).
+
+- Mục tiêu đủ 5 người × 10 phút/phiên — ưu tiên 3 willing users ở trên (Tuấn,
+  Mentor, Lợi) + 2 người zone khác.
 - **Task giao thật (không thuyết minh):**
   1. Team T004 mẫu chat 5 message (mix: 2 task rõ, 1 câu đùa, 1 task thiếu owner, 1 decision) → user xem bot đề xuất → confirm/reject.
   2. Chat 1 message "@Minh deploy trước tối mai" với Minh không thuộc team → user xem bot xử lý (kỳ vọng: warning, không auto-confirm).
   3. User bấm ✗ 1 candidate → xem đã ghi feedback chưa.
 - **3 câu chuẩn:** khó hiểu nhất? tin không vì sao? có dùng thật không?
 - **Metric quan sát:** user có bấm confirm khi bot đúng không? user có bực khi bot propose câu đùa không?
-- Ai log: [tên phụ trách demo/validation]
+- Người phụ trách log: Trịnh Bá Khánh Trình (2A202601531)

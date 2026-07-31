@@ -1,7 +1,8 @@
-# Nhóm ZicZord · Zone [X] · Lớp D304 · Khoá 4 - ZicZord Discord Action-Item Copilot
+# Nhóm ZicZord · Team T004 · Lớp D304 · Khoá 4 — Discord Action-Item Copilot
 
 Hướng: **B — Trợ lý Học viên (Discord)** · Loại: **Tính năng mới**
-Trạng thái: pivot 31/07/2026 sau 5 interview — xem [spec.md §9 Changelog](spec.md).
+Trạng thái: pivot 31/07/2026; **survey n=24 · 5 interview · eval 24/24** —
+xem [spec.md §9 Changelog](spec.md).
 
 **Lát cắt MỘT CÂU:** team học viên chat trong `#🤖-gõ-commands` → bot đọc + phân
 loại message thành candidate action item (task/decision/deadline/blocker/noise)
@@ -29,6 +30,9 @@ propose, KHÔNG BAO GIỜ tự write.**
 | CP2 · Bấm được | [codebase/](codebase/) — `docker-compose up` |
 | CP3 · AI thật + đo | [eval/results/](eval/results/) + [eval/traces/](eval/traces/) |
 | CP4 · Spec (hạn cứng 23:59 N1) | [spec.md](spec.md) |
+| Demo slides | [demo-slides.pdf](demo-slides.pdf) · [bản HTML](demo-slides.html) · [script 3 phút](PITCH-SCRIPT-3-MIN.md) |
+| Backup demo | [landing production](demo/production-landing.png) · [brief T004](demo/production-t004-brief.png) |
+| Checklist nộp | [SUBMISSION-CHECKLIST.md](SUBMISSION-CHECKLIST.md) |
 | R1 · Bằng chứng & impact | spec.md §1 + [evidence/mining-report.md](evidence/mining-report.md) + spec.md §10 |
 | R2 · Lát cắt & thiết kế | spec.md §2 + §6 + §11 + §12 |
 | R3 · Chỗ khó & kịch bản | spec.md §7 + [architecture/](architecture/) + spec.md §13 + §14 |
@@ -42,20 +46,39 @@ propose, KHÔNG BAO GIỜ tự write.**
 
 ```bash
 cd codebase
-docker-compose up -d
+docker compose up -d
 # Backend: http://localhost:8000  ·  Frontend: http://localhost:3000
 ```
 
 Chi tiết setup + smoke test + snapshot demo: [codebase/README.md](codebase/README.md).
 
-## Đo — golden set 22 case
+## Demo production
+
+- Web: https://kute-discord-copilot.vercel.app/
+- Feedback: https://github.com/hoaianthai345/K4-hackathon-ZicZord-D304/issues/5
+- Backend public dùng Cloudflare Quick Tunnel cho pitch; URL tunnel có thể đổi
+  khi tiến trình local khởi động lại.
+- Google Tasks production hiện ở **pitch-mock** vì chưa có OAuth authorized-user;
+  UI nói rõ mode và không tuyên bố đã ghi task thật.
+
+## Đo — 24 case executable + 22 case nguồn
 
 ```bash
-python eval/run_eval.py --endpoint http://localhost:8000/chat
+python3 eval/run_eval.py
 ```
 
-Quality bar: **≥80% pass + 100% no cross-scope leak + 100% không bịa khi không nguồn**.
-Chi tiết [eval/quality-bar.md](eval/quality-bar.md).
+Kết quả submission: **24/24 (100%)**, 0 critical failure, đạt quality bar khóa
+ở **≥80% + zero tolerance cho deadline**. Xem
+[submission.json](eval/results/submission.json) và
+[quality-bar.md](eval/quality-bar.md).
+
+## Trạng thái checklist cuối
+
+- Đã có: README + phân công, spec, codebase, eval baseline/final, survey n=24,
+  5 interview, 3 willing users, demo-slides PDF và live demo.
+- Cần con người hoàn tất trước khi nộp: thêm **2 user-test prototype** để đủ 5
+  và viết reflection riêng cho Thái Hoài An, Nguyễn Văn Phúc.
+- Chi tiết bằng chứng/pass/blocker: [SUBMISSION-CHECKLIST.md](SUBMISSION-CHECKLIST.md).
 
 ## Tài liệu chương trình (không sửa)
 

@@ -326,16 +326,16 @@ export function LandingPage() {
       <section className={styles.signalBand} aria-label="Bằng chứng validation">
         <div className={styles.signalInner}>
           <div>
-            <strong>5/5</strong>
-            <span>xác nhận Discord thiếu task flow</span>
+            <strong>17/24</strong>
+            <span>mất ≥10 phút/tuần tìm lại chat</span>
           </div>
           <div>
-            <strong>3/5</strong>
-            <span>sẵn sàng dùng thử bot</span>
+            <strong>20/24</strong>
+            <span>chắc chắn/có thể sẽ dùng</span>
           </div>
           <div>
-            <strong>22</strong>
-            <span>case trong golden set</span>
+            <strong>24/24</strong>
+            <span>case executable đạt quality bar</span>
           </div>
           <div>
             <strong>0</strong>
