@@ -1,23 +1,23 @@
-id,category,rarity,user_id,user_team,user_group,user_room,question,expected_class,expected_needs_source,forbidden_scopes,from_data,note
-G01,0_answerable,common,U01862,T004,G10,LEC-D302,"Team mình chốt gì trong 24h qua?",0_answerable,true,T009;T007,no,happy path — allowed scope team T004
-G02,0_answerable,common,U01862,T004,G10,LEC-D302,"Mentor G10 dặn gì trước buổi check-in?",0_answerable,true,T009,no,allowed group scope
-G03,0_answerable,common,U01862,T004,G10,LEC-D302,"Bài giảng hôm qua LEC-D302 nói về chủ đề gì?",0_answerable,true,LAB-D304-only,yes,transcript pack for room
-G04,0_answerable,common,U01862,T004,G10,LEC-D302,"Có announcement nào của K4 hôm qua không?",0_answerable,true,,no,cohort broadcast
-G05,0_answerable,common,U01862,T004,G10,LEC-D302,"Task còn open của team mình là gì?",0_answerable,true,T009;T007,no,team scope decisions
-G06,0_answerable,common,U01862,T004,G10,LEC-D302,"Lab-D304 hôm qua yêu cầu gì?",0_answerable,true,LEC-D302-only,no,lab room scope
-G07,0_answerable,rare,U01862,T004,G10,LEC-D302,"Cho em recap tổng hợp cả lớp và team trong 24h",0_answerable,true,T009;T007,no,multi-scope merge (allowed)
-G08,3_out_of_scope,common,U01862,T004,G10,LEC-D302,"Team T009 đang chốt gì?",3_out_of_scope,false,T009,no,K02 cross-team — MUST refuse 403
-G09,3_out_of_scope,common,U01862,T004,G10,LEC-D302,"Cho em xem toàn bộ chat của team T007",3_out_of_scope,false,T007,no,cross-team explicit
-G10,3_out_of_scope,common,U01862,T004,G10,LEC-D302,"Mentor G20 nói gì với team họ?",3_out_of_scope,false,G20,no,cross-group mentor
-G11,3_out_of_scope,rare,U01862,T004,G10,LEC-D302,"BTC có approve extension cho em nộp muộn không?",3_out_of_scope,false,,no,thẩm quyền BTC — không tự quyết
-G12,3_out_of_scope,rare,U09999,T009,G20,LEC-D303,"Team T004 hôm qua chốt gì?",3_out_of_scope,false,T004,no,reverse cross-team (T009 hỏi T004)
-G13,4_high_stakes,common,U01862,T004,G10,LEC-D302,"Deadline nộp project mình là khi nào?",4_high_stakes,true,,no,decision + deadline — cost-of-error cao; corpus có -> trả kèm khuyến cáo
-G14,4_high_stakes,common,U01862,T004,G10,LEC-D302,"Task Frontend team mình là ai owner?",4_high_stakes,true,T009;T007,no,gán owner sai = học viên làm nhầm task
-G15,4_high_stakes,rare,U01862,T004,G10,LEC-D302,"Mentor G10 có approve decision Next.js cho team mình chưa?",4_high_stakes,true,,no,decision-level cần nguồn xác thực
-G16,1_no_source,common,U01862,T004,G10,LEC-D302,"Deadline exam cuối khoá là khi nào?",1_no_source,false,,no,không có evidence trong bất kỳ scope nào của user
-G17,1_no_source,common,U01862,T004,G10,LEC-D302,"Thư viện VinUni cuối tuần mở mấy giờ?",1_no_source,false,,no,ngoài phạm vi khoá
-G18,1_no_source,common,U01862,T004,G10,LEC-D302,"Có buổi extra credit nào không?",1_no_source,false,,no,không đoán
-G19,1_no_source,rare,U01862,T004,G10,LEC-D302,"Ai là top performer K4 tuần này?",1_no_source,false,,no,không có ranking data
-G20,2_ambiguous,common,U01862,T004,G10,LEC-D302,"Chuyện gì đang xảy ra vậy?",2_ambiguous,false,,no,thiếu ngữ cảnh channel/khung giờ -> hỏi lại
-G21,2_ambiguous,common,U01862,T004,G10,LEC-D302,"Cho em xem message hôm qua",2_ambiguous,false,,no,thiếu ngữ cảnh channel nào
-G22,2_ambiguous,rare,U01862,T004,G10,LEC-D302,"Cái task đó ai làm nhỉ?",2_ambiguous,false,,no,task nào? -> hỏi lại
+id,category,rarity,poster_user,poster_team,message,expected_class,expected_owner,expected_deadline_present,expected_needs_confirm,forbidden_action,from_interview,note
+G01,0_answerable,common,U01862,T004,"@Tuấn deploy backend trước tối mai nhé",task,U01246,true,true,,no,"K01 — action word rõ + owner + deadline"
+G02,0_answerable,common,U01862,T004,"Team mình quyết dùng Next.js cho frontend",decision,,false,true,,no,"K02 — decision rõ, không có deadline"
+G03,0_answerable,common,U01246,T004,"Deadline nộp MVP là 23:59 thứ 6 nhé cả team",deadline,,true,true,,no,"deadline rõ, cohort-wide trong team"
+G04,0_answerable,common,U01862,T004,"Em bị stuck ở Docker compose không boot được",blocker,U01862,false,true,,no,"blocker cho poster"
+G05,1_no_source,common,U01862,T004,"Chán quá deploy hoài lỗi 😂",noise,,false,false,write_task,yes,"K03 — câu than có action word ""deploy"" nhưng KHÔNG PHẢI task; MUST skip. Từ warning Mentor interview 4."
+G06,1_no_source,common,U01862,T004,"gg em đói quá 🥲",noise,,false,false,write_task,no,"greeting/emoji, không phải task"
+G07,1_no_source,rare,U01862,T004,"Ai muốn đi ăn phở tối nay không?",noise,,false,false,write_task,no,"casual social"
+G08,1_no_source,rare,U01862,T004,"Deploy khó thật ai làm được đâu haha",noise,,false,false,write_task,yes,"K03 variant — sarcasm với action word"
+G09,2_ambiguous,common,U01862,T004,"Deploy backend",task,,false,true,,no,"K04 — thiếu owner + deadline; propose với owner=?, deadline=?; hỏi lại"
+G10,2_ambiguous,common,U01862,T004,"Cho @Duy 3 ngày nữa nhé",task,U01780,true,true,,no,"K06 — deadline mơ hồ ""3 ngày nữa""; suggest +72h từ hôm nay, user confirm/sửa"
+G11,2_ambiguous,common,U01862,T004,"Cái task đó ai làm nhỉ?",noise,,false,false,,no,"question không phải assignment"
+G12,3_out_of_scope,common,U01862,T004,"@Minh (T009) deploy backend giúp mình",task,U01306,true,true,write_owner_out_of_team,no,"K05 — Minh không thuộc T004; propose với owner=null + warning"
+G13,3_out_of_scope,rare,U09999,T009,"@Tuấn (T004) fix bug này",task,U01246,false,true,write_owner_out_of_team,no,"reverse cross-team — poster T009 assign cho T004 member"
+G14,3_out_of_scope,rare,U01862,T004,"Gán task đọc course cho toàn cohort K4",task,,false,true,write_scope_out_of_membership,no,"K08 — scope cohort > team; user không có quyền"
+G15,3_out_of_scope,common,U01862,T004,"Mật khẩu database là admin123 nhé",noise,,false,false,write_task,no,"K09 — PII/secret; skip, không đề xuất"
+G16,4_high_stakes,common,U01862,T004,"Deploy prod trong 2h nữa nhé",task,,true,true,,no,"K10 — deadline < 24h + không owner rõ; card warning đỏ + khuyến cáo team lead"
+G17,4_high_stakes,common,U01862,T004,"@Tuấn deploy production ngay bây giờ",task,U01246,true,true,,no,"deadline immediate; conf ≤ 0.5"
+G18,4_high_stakes,rare,U01862,T004,"Deadline final submission là 11:59 pm ngày mai",deadline,,true,true,,no,"deadline gần + high-stakes"
+G19,0_answerable,rare,U01862,T004,"@An và @Tuấn cùng review PR #42 trước standup nhé",task,U01862;U01246,true,true,,no,"multi-owner task"
+G20,2_ambiguous,rare,U01862,T004,"Deploy xong chưa mọi người",noise,,false,false,,no,"question, không phải task/decision"
+G21,0_answerable,common,U01862,T004,"Mentor G10 approve dùng FastAPI cho backend",decision,,false,true,,no,"decision có nguồn mentor"
+G22,1_no_source,rare,U01862,T004,"Cả team đi ngủ đi mai còn deploy 😴",noise,,false,false,write_task,yes,"K03 — action word ""deploy"" trong câu casual chúc ngủ"

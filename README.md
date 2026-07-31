@@ -1,20 +1,23 @@
-# Nhóm ZicZord · Zone [X] · Lớp D304 · Khoá 4 — Kute, Discord Catch-up Copilot
+# Nhóm ZicZord · Zone [X] · Lớp D304 · Khoá 4 — Kute, Discord Action-Item Copilot
 
 Hướng: **B — Trợ lý Học viên (Discord)** · Loại: **Tính năng mới**
+Trạng thái: pivot 31/07/2026 sau 5 interview — xem [spec.md §9 Changelog](spec.md).
 
-**Lát cắt MỘT CÂU:** học viên hỏi Trợ lý Kute trong `#🤖-gõ-commands` → hệ thống
-tính scope được phép từ membership (user/team/group/room/cohort) + truy xuất
-message & memory liên quan → trả summary có permalink nguồn, hoặc từ chối `403`
-khi cross-scope, hoặc *"chưa đủ dữ liệu"* khi không có evidence.
+**Lát cắt MỘT CÂU:** team học viên chat trong `#🤖-gõ-commands` → bot đọc + phân
+loại message thành candidate action item (task/decision/deadline/blocker/noise)
+trong scope allowed + đề xuất owner + đề xuất scope → user 1-click confirm/edit
+→ sync sang task tool (Jira/Sheets) + notify owner + track deadline. **Bot chỉ
+propose, KHÔNG BAO GIỜ tự write.**
 
 ## Thành viên & phân công
 
 | # | Mã HV | Tên đầy đủ | Lane | Deliverable có tên |
 |---|---|---|---|---|
-| 1 | [U____] | [Tên 1] | PM + Demo | [spec.md](spec.md), [canvas.md](canvas.md), demo-slides.pdf, pitch narrative |
-| 2 | [U____] | [Tên 2] | Backend + Data | [codebase/backend/app/](codebase/backend/app/) — Apify adapter, scopes, chat_service, FastAPI |
-| 3 | [U____] | [Tên 3] | Memory + Eval | Hindsight bank config, [eval/golden_set.csv](eval/golden_set.csv), [eval/run_eval.py](eval/run_eval.py), [eval/quality-bar.md](eval/quality-bar.md) |
-| 4 | [U____] | [Tên 4] | Frontend + QA | [codebase/frontend/src/](codebase/frontend/src/) — landing pitch, chat-shell, Discord UI |
+| 1 | 2A202601520 | **Nguyễn Hữu Tuyến** | PM + Frontend lead | [spec.md](spec.md), [canvas.md](canvas.md), pitch narrative, orchestration frontend |
+| 2 | 2A202601862 | **Thái Hoài An** | Agent Design (Backend + AI) | [codebase/backend/app/](codebase/backend/app/) — chat_service, extraction prompt, guardrails K03 filter, scopes |
+| 3 | 2A202601866 | **Vũ Thành Khang** | Scraw dữ liệu + Eval | Apify adapter, scripts crawl Discord, [eval/golden_set.csv](eval/golden_set.csv), [eval/run_eval.py](eval/run_eval.py) |
+| 4 | 2A202601531 | **Trịnh Bá Khánh Trình** | Scraw dữ liệu + Eval | Đồng deliverable với Khang; [validation/interview-transcripts.md](validation/interview-transcripts.md) |
+| 5 | 2A202601350 | **Nguyễn Văn Phúc** | Frontend UI | [codebase/frontend/src/](codebase/frontend/src/) — chat shell, candidate card, sync view |
 
 *(Vibe-coding rule: mỗi thành viên phải giải thích được deliverable có tên mình tại CP5/CP6.)*
 
