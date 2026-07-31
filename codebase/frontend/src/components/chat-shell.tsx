@@ -5,8 +5,10 @@ import {
   ArrowSquareOut,
   ArrowUp,
   Brain,
+  CalendarBlank,
   CaretDown,
   Check,
+  GlobeSimple,
   Hash,
   IdentificationCard,
   LockKey,
@@ -22,20 +24,27 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import {
+  addCandidateToGoogleCalendar,
   confirmCandidate,
   createCatchup,
+  createGoogleTaskFromBrief,
   createLearnerProfile,
+  createTeamBrief,
   deleteMemory,
+  dismissCandidate,
   getDiscordState,
   getLearnerProfile,
+  loadT004PitchContext,
   resetDemo,
   sendChat,
 } from "@/lib/api";
 import type {
   AssistantMessage,
   CatchupBrief,
+  CatchupItem,
   DiscordMessage,
   DiscordState,
+  GoogleTaskResponse,
   LearnerProfile,
   Memory,
   MemoryCandidate,
@@ -209,15 +218,30 @@ function LearnerGate({
 
 function CandidateCard({
   candidate,
+  onAddToCalendar,
   onConfirm,
   onDismiss,
   busy,
 }: {
   candidate: MemoryCandidate;
+  onAddToCalendar: () => void;
   onConfirm: () => void;
   onDismiss: () => void;
   busy: boolean;
 }) {
+  const calendarEvent = candidate.calendar_event;
+  const calendarSchedule = calendarEvent
+    ? calendarEvent.all_day && calendarEvent.start_date
+      ? `Cả ngày · ${calendarEvent.start_date.split("-").reverse().join("/")}`
+      : calendarEvent.start_at
+        ? new Intl.DateTimeFormat("vi-VN", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: calendarEvent.time_zone,
+          }).format(new Date(calendarEvent.start_at))
+        : null
+    : null;
+
   return (
     <motion.aside
       initial={{ opacity: 0, y: 10 }}
@@ -226,28 +250,74 @@ function CandidateCard({
       className="memory-proposal"
     >
       <span className="proposal-icon">
-        <Brain size={17} weight="fill" />
+        {calendarEvent ? (
+          <CalendarBlank size={17} weight="fill" />
+        ) : (
+          <Brain size={17} weight="fill" />
+        )}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="eyebrow text-accent-strong">Đề xuất memory</p>
+          <p className="eyebrow text-accent-strong">
+            {calendarEvent ? "Đề xuất Google Calendar" : "Đề xuất memory"}
+          </p>
           <span className="scope-chip scope-chip-team">
             {SCOPE_LABELS[candidate.scope_type]} · {candidate.scope_id}
           </span>
         </div>
-        <p className="mt-2 text-sm leading-6">{candidate.content}</p>
+        <p className="mt-2 text-sm font-semibold leading-6">
+          {calendarEvent?.summary ?? candidate.content}
+        </p>
+        {calendarSchedule && (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+            <CalendarBlank size={13} weight="bold" />
+            {calendarSchedule} · {calendarEvent?.time_zone}
+          </p>
+        )}
+        {calendarEvent?.attendee_email ? (
+          <p className="mt-1 text-xs text-muted">
+            Lời mời: {calendarEvent.attendee_email}
+          </p>
+        ) : calendarEvent ? (
+          <p className="mt-1 text-xs text-muted">
+            Đang chờ email Google Calendar trong khung chat.
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-muted">
-          Chỉ trở thành memory dài hạn sau khi bạn xác nhận.
+          {calendarEvent
+            ? calendarEvent.attendee_email
+              ? "Email đã được xác nhận; bạn có thể thử gửi lại nếu connector vừa lỗi."
+              : "Trả lời email ở tin nhắn tiếp theo để agent gửi invitation."
+            : "Chỉ trở thành memory dài hạn sau khi bạn xác nhận."}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
+          {calendarEvent?.attendee_email && (
+            <button
+              type="button"
+              onClick={onAddToCalendar}
+              disabled={busy}
+              className="button button-small"
+            >
+              <CalendarBlank size={15} weight="bold" />
+              {busy ? "Đang gửi lời mời" : "Thử gửi lại lời mời"}
+            </button>
+          )}
           <button
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="button button-small"
+            className={
+              calendarEvent
+                ? "button-secondary button-small"
+                : "button button-small"
+            }
           >
             <Check size={15} weight="bold" />
-            {busy ? "Đang lưu" : "Xác nhận đúng scope"}
+            {busy
+              ? "Đang lưu"
+              : calendarEvent
+                ? "Chỉ lưu memory"
+                : "Xác nhận đúng scope"}
           </button>
           <button
             type="button"
@@ -302,20 +372,27 @@ function AssistantTurn({ message }: { message: AssistantMessage }) {
         )}
         {message.citations.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {message.citations.map((citation) => (
-              <a
-                key={citation.message_id}
-                href={citation.permalink}
-                target="_blank"
-                rel="noreferrer"
-                className="citation-chip"
-                title="Mở tin nhắn nguồn trên Discord"
-              >
-                <Hash size={12} weight="bold" />
-                {citation.channel_name}
-                <ArrowSquareOut size={11} />
-              </a>
-            ))}
+            {message.citations.map((citation) => {
+              const webSource = citation.channel_id === "web";
+              return (
+                <a
+                  key={citation.message_id}
+                  href={citation.permalink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="citation-chip"
+                  title={webSource ? "Mở nguồn web" : "Mở tin nhắn nguồn trên Discord"}
+                >
+                  {webSource ? (
+                    <GlobeSimple size={12} weight="bold" />
+                  ) : (
+                    <Hash size={12} weight="bold" />
+                  )}
+                  {citation.channel_name}
+                  <ArrowSquareOut size={11} />
+                </a>
+              );
+            })}
           </div>
         )}
       </div>
@@ -382,19 +459,34 @@ function MemoryCard({
   );
 }
 
-function CatchupPanel({ brief }: { brief: CatchupBrief }) {
+function TeamBriefPanel({
+  brief,
+  syncedTasks,
+  busyItemId,
+  onCreateTask,
+  mode = "pitch",
+}: {
+  brief: CatchupBrief;
+  syncedTasks: Record<string, GoogleTaskResponse>;
+  busyItemId: string | null;
+  onCreateTask?: (item: CatchupItem) => void;
+  mode?: "pitch" | "catchup";
+}) {
+  const isCatchup = mode === "catchup";
   return (
     <motion.section
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className="mx-4 mb-5 overflow-hidden rounded-2xl border border-line bg-surface/70"
-      aria-labelledby="catchup-title"
+      aria-labelledby="team-brief-title"
     >
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-4">
         <div>
-          <p className="eyebrow text-accent-strong">Bản cập nhật có nguồn</p>
-          <h3 id="catchup-title" className="mt-1 text-base font-bold">
-            Bạn cần biết · 24 giờ qua
+          <p className="eyebrow text-accent-strong">
+            {isCatchup ? "Bản cập nhật có nguồn" : "Brief thật từ context mock"}
+          </p>
+          <h3 id="team-brief-title" className="mt-1 text-base font-bold">
+            {isCatchup ? "Bạn cần biết · 24 giờ qua" : "Team T004 · 24 giờ qua"}
           </h3>
           <p className="mt-1 text-xs text-muted">
             {brief.summary} · {brief.source_message_count} nguồn · {brief.provider}
@@ -402,7 +494,7 @@ function CatchupPanel({ brief }: { brief: CatchupBrief }) {
         </div>
         <span className="safe-badge">
           <ShieldCheck size={13} weight="fill" />
-          Đúng scope
+          {brief.scope_key} only
         </span>
       </header>
       <div className="space-y-3 p-4">
@@ -411,45 +503,77 @@ function CatchupPanel({ brief }: { brief: CatchupBrief }) {
             Chưa có quyết định, task, blocker hoặc thông báo đủ bằng chứng trong cửa sổ này.
           </p>
         )}
-        {brief.items.map((item) => (
-          <article
-            key={item.id}
-            className="rounded-xl border border-line bg-paper p-3.5"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="scope-chip scope-chip-team">
-                {BRIEF_LABELS[item.kind]}
-              </span>
-              {item.owner && (
-                <span className="text-[11px] font-semibold text-muted">
-                  Owner · {item.owner}
+        {brief.items.map((item) => {
+          const synced = syncedTasks[item.id];
+          const actionable = item.kind === "task" || item.kind === "blocker";
+          return (
+            <article
+              key={item.id}
+              className="rounded-xl border border-line bg-paper p-3.5"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="scope-chip scope-chip-team">
+                  {BRIEF_LABELS[item.kind]}
                 </span>
-              )}
-              {item.deadline && (
-                <span className="text-[11px] font-semibold text-danger">
-                  {item.deadline}
-                </span>
-              )}
-            </div>
-            <p className="mt-2 text-sm font-bold leading-5">{item.title}</p>
-            <p className="mt-1 text-xs leading-5 text-muted">{item.detail}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {item.citations.map((citation) => (
-                <a
-                  key={citation.message_id}
-                  href={citation.permalink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="citation-chip"
-                >
-                  <Hash size={12} weight="bold" />
-                  #{citation.channel_name}
-                  <ArrowSquareOut size={11} />
-                </a>
-              ))}
-            </div>
-          </article>
-        ))}
+                {item.owner && (
+                  <span className="text-[11px] font-semibold text-muted">
+                    Owner · {item.owner}
+                  </span>
+                )}
+                {item.deadline && (
+                  <span className="flex items-center gap-1 text-[11px] font-semibold text-danger">
+                    <CalendarBlank size={12} weight="bold" />
+                    {item.deadline}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-sm font-bold leading-5">{item.title}</p>
+              <p className="mt-1 text-xs leading-5 text-muted">{item.detail}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {item.citations.map((citation) => (
+                  <a
+                    key={citation.message_id}
+                    href={citation.permalink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="citation-chip"
+                  >
+                    <Hash size={12} weight="bold" />
+                    #{citation.channel_name}
+                    <ArrowSquareOut size={11} />
+                  </a>
+                ))}
+                {actionable && onCreateTask && !synced && (
+                  <button
+                    type="button"
+                    className="button button-small ml-auto"
+                    onClick={() => onCreateTask(item)}
+                    disabled={busyItemId !== null}
+                  >
+                    <Check size={14} weight="bold" />
+                    {busyItemId === item.id
+                      ? "Đang tạo task"
+                      : "Xác nhận & tạo Google Task"}
+                  </button>
+                )}
+                {synced && (
+                  <a
+                    href={synced.html_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="button-secondary button-small ml-auto"
+                  >
+                    <Check size={14} weight="bold" />
+                    {synced.provider === "google-tasks"
+                      ? "Đã tạo Google Task"
+                      : "Đã tạo pitch-mock"}
+                    <ArrowSquareOut size={12} />
+                  </a>
+                )}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </motion.section>
   );
@@ -468,9 +592,15 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [memoryBusy, setMemoryBusy] = useState(false);
+  const [pitchBrief, setPitchBrief] = useState<CatchupBrief | null>(null);
   const [catchupBrief, setCatchupBrief] = useState<CatchupBrief | null>(null);
+  const [pitchBusy, setPitchBusy] = useState(false);
+  const [taskBusyItemId, setTaskBusyItemId] = useState<string | null>(null);
+  const [syncedTasks, setSyncedTasks] = useState<
+    Record<string, GoogleTaskResponse>
+  >({});
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const optimisticCounter = useRef(0);
 
   const currentChannel = state?.channels.find((channel) => channel.id === activeChannel);
@@ -549,9 +679,15 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
   }, [activeUser]);
 
   useEffect(() => {
-    if (activeChannel === "bot-commands") {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (activeChannel !== "bot-commands" || !threadRef.current) return;
+    const thread = threadRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      thread.scrollTo({
+        top: thread.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [state?.assistant_messages, candidate, sending, activeChannel, catchupBrief]);
 
   async function submitLearnerProfile(fullName: string, studentIdLast5: string) {
@@ -623,7 +759,17 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
           ? {
               ...current,
               provider: response.provider,
-              assistant_messages: [...current.assistant_messages, response.message],
+              assistant_messages: [
+                ...current.assistant_messages.map((item) =>
+                  item.id === optimistic.id && response.sensitive_input_consumed
+                    ? {
+                        ...item,
+                        content: "[Email Google Calendar đã cung cấp]",
+                      }
+                    : item,
+                ),
+                response.message,
+              ],
             }
           : current,
       );
@@ -663,6 +809,63 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     }
   }
 
+  async function handleAddToCalendar() {
+    if (!candidate || !state || !candidate.calendar_event) return;
+    setMemoryBusy(true);
+    setError(null);
+    try {
+      const result = await addCandidateToGoogleCalendar(candidate.id, activeUser);
+      const confirmation: AssistantMessage = {
+        id: `calendar-${result.event_id}`,
+        role: "assistant",
+        author_name: "Trợ lý ZicZord",
+        content: `Đã thêm **${result.summary}** vào Google Calendar. [Mở sự kiện](${result.html_link})`,
+        citations: [],
+        memory_used: [result.memory.id],
+        created_at: new Date().toISOString(),
+      };
+      setState({
+        ...state,
+        memories: [
+          ...state.memories.filter((memory) => memory.id !== result.memory.id),
+          result.memory,
+        ],
+        candidates: state.candidates.filter((item) => item.id !== candidate.id),
+        assistant_messages: [...state.assistant_messages, confirmation],
+      });
+      setCandidate(null);
+    } catch (calendarError) {
+      setError(
+        calendarError instanceof Error
+          ? calendarError.message
+          : "Không thêm được task vào Google Calendar.",
+      );
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
+
+  async function handleDismissCandidate() {
+    if (!candidate || !state) return;
+    setMemoryBusy(true);
+    try {
+      await dismissCandidate(candidate.id, activeUser);
+      setState({
+        ...state,
+        candidates: state.candidates.filter((item) => item.id !== candidate.id),
+      });
+      setCandidate(null);
+    } catch (dismissError) {
+      setError(
+        dismissError instanceof Error
+          ? dismissError.message
+          : "Không bỏ được đề xuất.",
+      );
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
+
   async function handleDelete(memoryId: string) {
     if (!state) return;
     try {
@@ -680,12 +883,86 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     setMemoryBusy(true);
     try {
       await resetDemo();
+      setPitchBrief(null);
       setCatchupBrief(null);
+      setSyncedTasks({});
       await reload(activeUser);
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : "Không reset được demo.");
     } finally {
       setMemoryBusy(false);
+    }
+  }
+
+  async function handleRunT004Pitch() {
+    if (!state || state.user.team_id !== "T004") {
+      setError("Pitch mode chỉ được mở cho thành viên team T004.");
+      return;
+    }
+    setPitchBusy(true);
+    setError(null);
+    setSyncedTasks({});
+    try {
+      await loadT004PitchContext(activeUser);
+      const [refreshed, brief] = await Promise.all([
+        getDiscordState(activeUser),
+        createTeamBrief(activeUser),
+      ]);
+      setState(refreshed);
+      setCandidate(refreshed.candidates.at(-1) ?? null);
+      setPitchBrief(brief);
+      setActiveChannel("bot-commands");
+    } catch (pitchError) {
+      setError(
+        pitchError instanceof Error
+          ? pitchError.message
+          : "Không chạy được luồng pitch T004.",
+      );
+    } finally {
+      setPitchBusy(false);
+    }
+  }
+
+  async function handleCreateGoogleTask(item: CatchupItem) {
+    if (!pitchBrief) return;
+    setTaskBusyItemId(item.id);
+    setError(null);
+    try {
+      const task = await createGoogleTaskFromBrief(
+        pitchBrief.id,
+        item.id,
+        activeUser,
+      );
+      setSyncedTasks((current) => ({ ...current, [item.id]: task }));
+      const modeLabel =
+        task.provider === "google-tasks"
+          ? "Google Tasks thật"
+          : "pitch-mock (chưa ghi ra tài khoản Google)";
+      const confirmation: AssistantMessage = {
+        id: `google-task-${task.task_id}`,
+        role: "assistant",
+        author_name: "Trợ lý ZicZord",
+        content: `Đã tạo **${task.title}** bằng ${modeLabel}. Scope được khóa ở \`${task.scope_key}\`. [Mở Google Tasks](${task.html_link})`,
+        citations: item.citations,
+        memory_used: [],
+        created_at: new Date().toISOString(),
+      };
+      setState((current) =>
+        current
+          ? {
+              ...current,
+              assistant_messages: [...current.assistant_messages, confirmation],
+            }
+          : current,
+      );
+    } catch (taskError) {
+      setError(
+        taskError instanceof Error
+          ? taskError.message
+          : "Không tạo được Google Task.",
+      );
+    } finally {
+      setTaskBusyItemId(null);
     }
   }
 
@@ -798,7 +1075,9 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
                   onChange={(event) => {
                     setLoading(true);
                     setActiveChannel("bot-commands");
+                    setPitchBrief(null);
                     setCatchupBrief(null);
+                    setSyncedTasks({});
                     setActiveUser(event.target.value);
                   }}
                 >
@@ -824,7 +1103,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
           </div>
         </header>
 
-        <div className="discord-thread">
+        <div ref={threadRef} className="discord-thread">
           {loading ? (
             <LoadingState />
           ) : error && !state ? (
@@ -852,10 +1131,58 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
                   ZicZord đọc nguồn Discord đã cấp quyền, sau đó recall memory đúng user và đúng nhóm.
                 </p>
               </div>
+              {!compact && state?.user.team_id === "T004" && (
+                <section className="mx-4 mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-accent/60 bg-accent-soft px-4 py-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="eyebrow text-accent-strong">Pitch mode</p>
+                      <span className="safe-badge">
+                        <ShieldCheck size={13} weight="fill" />
+                        team:T004 only
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm font-bold">
+                      Context mock → brief có nguồn → Google Task
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      Chỉ upsert message trong #t-004; không sửa context chung,
+                      group mentor hoặc phòng học.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="button shrink-0"
+                    onClick={handleRunT004Pitch}
+                    disabled={pitchBusy || taskBusyItemId !== null}
+                  >
+                    <Sparkle size={15} weight="fill" />
+                    {pitchBusy
+                      ? "Đang nạp & tạo brief"
+                      : pitchBrief
+                        ? "Chạy lại brief T004"
+                        : "Nạp context & tạo brief"}
+                  </button>
+                </section>
+              )}
+              {pitchBrief && (
+                <TeamBriefPanel
+                  brief={pitchBrief}
+                  syncedTasks={syncedTasks}
+                  busyItemId={taskBusyItemId}
+                  onCreateTask={handleCreateGoogleTask}
+                />
+              )}
               {state?.assistant_messages.map((message) => (
                 <AssistantTurn key={message.id} message={message} />
               ))}
-              {catchupBrief && <CatchupPanel brief={catchupBrief} />}
+              {catchupBrief && (
+                <TeamBriefPanel
+                  brief={catchupBrief}
+                  syncedTasks={{}}
+                  busyItemId={null}
+                  mode="catchup"
+                />
+              )}
               {sending && (
                 <div className="discord-turn" role="status">
                   <ZicZordAvatar />
@@ -874,13 +1201,13 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
                 {candidate && (
                   <CandidateCard
                     candidate={candidate}
+                    onAddToCalendar={handleAddToCalendar}
                     onConfirm={handleConfirm}
-                    onDismiss={() => setCandidate(null)}
+                    onDismiss={handleDismissCandidate}
                     busy={memoryBusy}
                   />
                 )}
               </AnimatePresence>
-              <div ref={bottomRef} />
             </div>
           ) : (
             <div className="thread-content">

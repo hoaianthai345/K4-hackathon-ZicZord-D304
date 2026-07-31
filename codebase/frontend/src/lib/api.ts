@@ -4,12 +4,15 @@ import type {
   AdminMemoryInput,
   AdminOverview,
   CatchupBrief,
+  CalendarTaskResponse,
   ChatResponse,
   ContextPlanResponse,
   DiscordState,
+  GoogleTaskResponse,
   LearnerProfile,
   LearnerProfileInput,
   Memory,
+  PitchContextResponse,
 } from "./types";
 
 const API_URL =
@@ -85,6 +88,54 @@ export function sendChat(
   });
 }
 
+export function confirmCandidate(
+  candidateId: string,
+  userId: string,
+): Promise<Memory> {
+  return apiFetch(
+    `/api/memory-candidates/${candidateId}/confirm?user_id=${encodeURIComponent(userId)}`,
+    { method: "POST" },
+  );
+}
+
+export function dismissCandidate(
+  candidateId: string,
+  userId: string,
+): Promise<void> {
+  return apiFetch(
+    `/api/memory-candidates/${encodeURIComponent(candidateId)}?user_id=${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function addCandidateToGoogleCalendar(
+  candidateId: string,
+  userId: string,
+): Promise<CalendarTaskResponse> {
+  return apiFetch(
+    `/api/memory-candidates/${encodeURIComponent(candidateId)}/google-calendar?user_id=${encodeURIComponent(userId)}`,
+    { method: "POST" },
+  );
+}
+
+export function loadT004PitchContext(
+  userId: string,
+): Promise<PitchContextResponse> {
+  return apiFetch(
+    `/api/pitch/t004/context?user_id=${encodeURIComponent(userId)}`,
+    { method: "POST" },
+  );
+}
+
+export function createTeamBrief(
+  userId: string,
+): Promise<CatchupBrief> {
+  return apiFetch(
+    `/api/pitch/t004/brief?user_id=${encodeURIComponent(userId)}`,
+    { method: "POST" },
+  );
+}
+
 export function createCatchup(
   userId: string,
   windowHours = 24,
@@ -99,12 +150,13 @@ export function createCatchup(
   });
 }
 
-export function confirmCandidate(
-  candidateId: string,
+export function createGoogleTaskFromBrief(
+  briefId: string,
+  itemId: string,
   userId: string,
-): Promise<Memory> {
+): Promise<GoogleTaskResponse> {
   return apiFetch(
-    `/api/memory-candidates/${candidateId}/confirm?user_id=${encodeURIComponent(userId)}`,
+    `/api/catch-up/${encodeURIComponent(briefId)}/items/${encodeURIComponent(itemId)}/google-task?user_id=${encodeURIComponent(userId)}`,
     { method: "POST" },
   );
 }

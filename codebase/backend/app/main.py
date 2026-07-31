@@ -27,6 +27,18 @@ from .config import settings
 from .context_tools import ContextToolService
 from .database import Database
 from .evaluation_service import EvaluationService
+from .google_calendar import (
+    CalendarTaskService,
+    GoogleCalendarError,
+    GoogleCalendarGateway,
+    GoogleCalendarNotConfigured,
+)
+from .google_tasks import (
+    GoogleTaskService,
+    GoogleTasksError,
+    GoogleTasksGateway,
+    GoogleTasksNotConfigured,
+)
 from .hindsight_gateway import HindsightGateway
 from .llm_gateway import LLMGateway
 from .rag_anything_gateway import RAGAnythingGateway
@@ -42,6 +54,7 @@ from .schemas import (
     ChatResponse,
     CatchupBrief,
     CatchupRequest,
+    CalendarTaskResponse,
     ChecklistItem,
     ChecklistUpdate,
     CommunityUser,
@@ -50,12 +63,14 @@ from .schemas import (
     ContextToolCall,
     DiscordMessage,
     DiscordState,
+    GoogleTaskResponse,
     HealthResponse,
     IngestionStatus,
     LearnerProfile,
     LearnerProfileCreate,
     Memory,
     MemoryUpdate,
+    PitchContextResponse,
     RAGQueryRequest,
     RAGQueryResponse,
     RAGSource,
@@ -71,10 +86,11 @@ from .scopes import (
     user_record,
     visible_channels,
 )
-from .seed import USERS
+from .seed import USERS, t004_pitch_context
 from .store import JsonStore
 from .telegram_gateway import TelegramGateway
 from .telegram_service import TelegramService
+from .web_search import TavilyWebSearch
 
 
 store = JsonStore(settings.state_path)
@@ -84,7 +100,15 @@ llm = LLMGateway(settings)
 database = Database(settings)
 rag = RAGAnythingGateway(settings)
 context_tools = ContextToolService(database)
-chat_service = ChatService(store, hindsight, llm, rag, context_tools)
+web_search = TavilyWebSearch(settings)
+chat_service = ChatService(
+    store,
+    hindsight,
+    llm,
+    rag,
+    context_tools,
+    web_search,
+)
 catchup_service = CatchupService(
     store,
     llm,
@@ -100,6 +124,15 @@ telegram_service = TelegramService(
     telegram_gateway,
     database,
 )
+google_calendar = GoogleCalendarGateway(settings)
+calendar_tasks = CalendarTaskService(
+    store,
+    google_calendar,
+    chat_service.confirm_candidate,
+)
+chat_service.calendar_action = calendar_tasks.sync_candidate
+google_tasks = GoogleTasksGateway(settings)
+google_task_service = GoogleTaskService(store, google_tasks)
 
 
 @asynccontextmanager
@@ -187,7 +220,13 @@ async def health() -> HealthResponse:
         database_learning_contexts=database_status.learning_contexts,
         rag_reachable=rag_status["reachable"],
         rag_indexed_scopes=rag_status["indexed_scopes"],
+        web_search_provider=(
+            "tavily" if web_search.configured else "not-configured"
+        ),
         telegram_configured=telegram_service.configured,
+        google_calendar_configured=google_calendar.configured,
+        google_calendar_provider=google_calendar.provider,
+        google_tasks_mode=google_tasks.provider,
     )
 
 
@@ -266,6 +305,8 @@ def discord_state(user_id: str = Query(default="U01862")) -> DiscordState:
             "Deadline và blocker hiện tại là gì?",
             "Mentor G10 có thông báo quan trọng nào?",
             "Giảng viên giải thích Transformer và attention như thế nào?",
+            "Tìm trên web tin AI mới nhất hôm nay",
+            "Nhắc tôi hoàn thiện slide lúc 20h ngày mai",
         ],
         provider=llm.status().name,
         ingestion=IngestionStatus.model_validate(snapshot["ingestion"]),
@@ -297,7 +338,11 @@ async def chat(payload: ChatRequest) -> ChatResponse:
             demo_user_id=user.id,
             channel_id=payload.channel_id,
             source="web",
-            question=payload.message,
+            question=(
+                "[Email Google Calendar đã cung cấp]"
+                if response.sensitive_input_consumed
+                else payload.message
+            ),
             answer=response.message.content,
             provider=response.provider,
             citations=[
@@ -701,6 +746,98 @@ async def create_catchup(payload: CatchupRequest) -> CatchupBrief:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.post("/api/pitch/t004/context", response_model=PitchContextResponse)
+def load_t004_context(
+    user_id: str = Query(default="U01862"),
+) -> PitchContextResponse:
+    user = get_user(user_id)
+    if user.team_id != "T004":
+        raise _permission_error()
+    pitch_messages = t004_pitch_context()
+    pitch_by_id = {message["id"]: message for message in pitch_messages}
+    result: dict = {}
+
+    def operation(state: dict):
+        current = state["discord_messages"]
+        non_pitch = [
+            message
+            for message in current
+            if message["id"] not in pitch_by_id
+        ]
+        state["discord_messages"] = non_pitch + pitch_messages
+        state["ingestion"]["imported_count"] = len(state["discord_messages"])
+        result.update(
+            {
+                "team_id": "T004",
+                "channel_id": "team-t004",
+                "imported_count": len(pitch_messages),
+                "total_team_message_count": sum(
+                    message["channel_id"] == "team-t004"
+                    for message in state["discord_messages"]
+                ),
+                "preserved_non_team_message_count": sum(
+                    message["channel_id"] != "team-t004"
+                    for message in state["discord_messages"]
+                ),
+                "message_ids": sorted(pitch_by_id),
+            }
+        )
+        return result
+
+    store.mutate(operation)
+    return PitchContextResponse.model_validate(result)
+
+
+@app.post("/api/pitch/t004/brief", response_model=CatchupBrief)
+async def create_t004_pitch_brief(
+    user_id: str = Query(default="U01862"),
+) -> CatchupBrief:
+    user = get_user(user_id)
+    if user.team_id != "T004":
+        raise _permission_error()
+    loaded = load_t004_context(user_id)
+    return await catchup_service.generate(
+        user,
+        24,
+        "team",
+        source_message_ids=set(loaded.message_ids),
+    )
+
+
+@app.post(
+    "/api/catch-up/{brief_id}/items/{item_id}/google-task",
+    response_model=GoogleTaskResponse,
+)
+async def create_google_task_from_brief(
+    brief_id: str,
+    item_id: str,
+    user_id: str = Query(default="U01862"),
+) -> GoogleTaskResponse:
+    user = get_user(user_id)
+    try:
+        return await google_task_service.sync_brief_item(
+            brief_id,
+            item_id,
+            user,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Không tìm thấy brief hoặc action item.",
+        ) from exc
+    except PermissionError as exc:
+        raise _permission_error() from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GoogleTasksNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (GoogleTasksError, httpx.HTTPError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Không thể tạo Google Task: {exc}",
+        ) from exc
+
+
 @app.post(
     "/api/catch-up/{brief_id}/checklist",
     response_model=list[ChecklistItem],
@@ -743,6 +880,56 @@ def update_checklist_item(
         return catchup_service.update_checklist(item_id, payload.completed, user)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Không tìm thấy checklist item.") from exc
+
+
+@app.post(
+    "/api/memory-candidates/{candidate_id}/google-calendar",
+    response_model=CalendarTaskResponse,
+)
+async def add_candidate_to_google_calendar(
+    candidate_id: str,
+    user_id: str = Query(default="U01862"),
+) -> CalendarTaskResponse:
+    user = get_user(user_id)
+    try:
+        return await calendar_tasks.sync_candidate(candidate_id, user)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Task đề xuất không còn tồn tại.",
+        ) from exc
+    except PermissionError as exc:
+        raise _permission_error() from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GoogleCalendarNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (GoogleCalendarError, httpx.HTTPError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Không thể ghi Google Calendar: {exc}",
+        ) from exc
+
+
+@app.delete(
+    "/api/memory-candidates/{candidate_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def dismiss_candidate(
+    candidate_id: str,
+    user_id: str = Query(default="U01862"),
+) -> Response:
+    user = get_user(user_id)
+    try:
+        await chat_service.dismiss_candidate(candidate_id, user)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Gợi ý không còn tồn tại.",
+        ) from exc
+    except PermissionError as exc:
+        raise _permission_error() from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/api/memory-candidates/{candidate_id}/confirm", response_model=Memory)

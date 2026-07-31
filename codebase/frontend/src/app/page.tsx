@@ -1,5 +1,5 @@
-import { PitchDeck } from "@/components/pitch-deck";
+import { LandingPage } from "@/components/landing-page";
 
 export default function Home() {
-  return <PitchDeck />;
+  return <LandingPage />;
 }

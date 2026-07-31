@@ -10,6 +10,7 @@ for credential_name in (
     "OPENROUTER_API_KEY_KHANG",
     "OPENROUTER_API_KEY_TRINH",
     "GROQ_API_KEY",
+    "TAVILY_API_KEY",
 ):
     os.environ[credential_name] = ""
 
@@ -17,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.apify_gateway import normalize_apify_item
 from app.config import Settings
-from app.main import app, database, rag
+from app.main import app, database, llm, rag, web_search
 from app.rag_anything_gateway import (
     RAGAnythingResult,
     RAGAnythingSource,
@@ -53,6 +54,7 @@ def test_health_and_discord_state_expose_hierarchy():
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["memory_provider"] == "local-demo"
+    assert health.json()["web_search_provider"] == "not-configured"
 
     response = client.get("/api/discord-state", params={"user_id": "U01862"})
     assert response.status_code == 200
@@ -226,6 +228,114 @@ def test_chat_summary_has_discord_citations():
         for citation in payload["message"]["citations"]
     )
     assert "T009" not in payload["message"]["content"]
+
+
+def test_greeting_stays_conversational_instead_of_triggering_catchup():
+    response = client.post(
+        "/api/chat",
+        json={
+            "user_id": "U01862",
+            "message": "Hello",
+            "channel_id": "bot-commands",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "conversation-router"
+    assert payload["message"]["content"].startswith("Chào An")
+    assert payload["message"]["citations"] == []
+    assert payload["tool_calls"] == []
+    assert "Deadline:" not in payload["message"]["content"]
+    assert "Blocker:" not in payload["message"]["content"]
+
+
+def test_explicit_web_search_uses_tavily_without_discord_context(
+    monkeypatch,
+):
+    from app.web_search import WebSearchResponse, WebSearchResult
+
+    captured = {}
+
+    async def fake_search(query):
+        captured["query"] = query
+        return WebSearchResponse(
+            query="Tavily Search API",
+            results=[
+                WebSearchResult(
+                    title="Tavily Search API",
+                    url="https://docs.tavily.com/documentation/api-reference/endpoint/search",
+                    content="Tavily exposes a search endpoint for web results.",
+                    score=0.99,
+                )
+            ],
+        )
+
+    async def fake_answer(query, results, fallback):
+        captured["result_domains"] = [result.domain for result in results]
+        return "Tavily cung cấp API tìm kiếm web. [W1]"
+
+    monkeypatch.setattr(web_search, "search", fake_search)
+    monkeypatch.setattr(llm, "answer_with_web_context", fake_answer)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "user_id": "U01862",
+            "message": "Tìm trên web Tavily Search API là gì?",
+            "channel_id": "bot-commands",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert captured["query"] == "Tìm trên web Tavily Search API là gì?"
+    assert captured["result_domains"] == ["docs.tavily.com"]
+    assert payload["message"]["content"] == "Tavily cung cấp API tìm kiếm web."
+    assert payload["message"]["citations"][0]["channel_id"] == "web"
+    assert payload["tool_calls"][0]["name"] == "search_web"
+    assert payload["tool_calls"][0]["result_count"] == 1
+    assert "T004" not in payload["tool_calls"][0]["arguments"]["query"]
+
+
+def test_meta_feedback_is_acknowledged_without_another_summary():
+    response = client.post(
+        "/api/chat",
+        json={
+            "user_id": "U01862",
+            "message": "tôi chưa hỏi mà",
+            "channel_id": "bot-commands",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "conversation-router"
+    assert "bạn chưa hỏi gì cả" in payload["message"]["content"]
+    assert "trả lời đúng việc bạn hỏi" in payload["message"]["content"]
+    assert payload["message"]["citations"] == []
+    assert payload["tool_calls"] == []
+
+
+def test_mini_hackathon_prediction_votes_for_ziczord():
+    response = client.post(
+        "/api/chat",
+        json={
+            "user_id": "U01862",
+            "message": "Bạn nghĩ ai sẽ thắng mini-hackathon này",
+            "channel_id": "bot-commands",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "conversation-router"
+    assert (
+        payload["message"]["content"]
+        == "Tôi nghĩ team ZicZord sẽ được nhiều phiếu bầu nhất"
+    )
+    assert payload["message"]["citations"] == []
+    assert payload["tool_calls"] == []
 
 
 def test_candidate_can_be_confirmed_only_by_creator_scope():

@@ -1,14 +1,27 @@
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+import hashlib
 import re
-from urllib.parse import quote
+import unicodedata
+from urllib.parse import quote, urlparse
 from uuid import uuid4
 
+import httpx
+
 from .context_tools import ContextPlan, ContextToolService
+from .google_calendar import (
+    GoogleCalendarError,
+    calendar_requested,
+    extract_email,
+    parse_calendar_event_draft,
+    redact_emails,
+)
 from .hindsight_gateway import HindsightGateway
 from .llm_gateway import LLMGateway
 from .rag_anything_gateway import RAGAnythingGateway, RAGAnythingSource
 from .schemas import (
     AssistantMessage,
+    CalendarTaskResponse,
     ChatResponse,
     Citation,
     CommunityUser,
@@ -23,6 +36,11 @@ from .scopes import (
     channel_record,
 )
 from .store import JsonStore
+from .web_search import (
+    TavilyWebSearch,
+    WebSearchError,
+    WebSearchResult,
+)
 
 
 def now() -> datetime:
@@ -37,6 +55,16 @@ def _normal(value: str) -> str:
     return value.casefold().replace("đ", "d")
 
 
+def _plain(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", _normal(value))
+    without_accents = "".join(
+        character
+        for character in decomposed
+        if not unicodedata.combining(character)
+    )
+    return re.sub(r"[^\w@]+", " ", without_accents).strip()
+
+
 class ChatService:
     def __init__(
         self,
@@ -45,12 +73,87 @@ class ChatService:
         llm: LLMGateway,
         rag: RAGAnythingGateway | None = None,
         context_tools: ContextToolService | None = None,
+        web_search: TavilyWebSearch | None = None,
     ):
         self.store = store
         self.hindsight = hindsight
         self.llm = llm
         self.rag = rag
         self.context_tools = context_tools
+        self.web_search = web_search
+        self.calendar_action: (
+            Callable[
+                [str, CommunityUser, str | None],
+                Awaitable[CalendarTaskResponse],
+            ]
+            | None
+        ) = None
+
+    @staticmethod
+    def _conversation_reply(
+        user: CommunityUser,
+        query: str,
+    ) -> str | None:
+        """Handle social turns before retrieval so they do not become summaries."""
+        value = _plain(query)
+        first_name = user.name.split()[-1]
+
+        if value in {
+            "ban nghi ai se thang mini hackathon nay",
+            "ban nghi team nao se thang mini hackathon nay",
+        }:
+            return "Tôi nghĩ team ZicZord sẽ được nhiều phiếu bầu nhất"
+
+        if any(
+            phrase in value
+            for phrase in (
+                "toi chua hoi",
+                "minh chua hoi",
+                "em chua hoi",
+                "chua hoi ma",
+                "toi dau co hoi",
+                "minh dau co hoi",
+                "sao tu tom tat",
+                "sao lai tu tom tat",
+                "chua can tom tat",
+                "dung tom tat",
+            )
+        ):
+            return (
+                "Đúng rồi, bạn chưa hỏi gì cả 😅 Mình đã hơi vội. "
+                "Cứ nhắn khi bạn cần, mình sẽ trả lời đúng việc bạn hỏi."
+            )
+
+        if re.fullmatch(
+            r"(?:xin chao|chao|hello|hi|hey|alo)"
+            r"(?: (?:ban|bot|ziczord|tro ly))?",
+            value,
+        ):
+            return (
+                f"Chào {first_name} 👋 Mình ở đây. "
+                "Bạn cứ hỏi tự nhiên nhé—mình chỉ tra cứu hoặc tóm tắt khi bạn yêu cầu."
+            )
+
+        if re.fullmatch(
+            r"(?:cam on|thanks|thank you|ok|okay|oke|okela|hieu roi|ro roi)",
+            value,
+        ):
+            return "Không có gì nhé. Khi nào cần thì cứ gọi mình."
+
+        if value in {
+            "ban la ai",
+            "ziczord la gi",
+            "ban lam duoc gi",
+            "help",
+            "giup duoc gi",
+        }:
+            return (
+                "Mình là ZicZord. Mình có thể tìm lại thông tin trong các kênh "
+                "bạn được phép xem, giải thích nội dung bài học, hoặc tóm tắt "
+                "deadline, việc cần làm và blocker khi bạn yêu cầu."
+            )
+
+        return None
 
     def _visible_memories(self, user: CommunityUser) -> list[Memory]:
         allowed = allowed_scope_keys(user)
@@ -264,6 +367,42 @@ class ChatService:
         )
 
     @staticmethod
+    def _web_citation(result: WebSearchResult) -> Citation:
+        domain = result.domain or urlparse(result.url).netloc
+        return Citation(
+            message_id=f"web-{hashlib.sha256(result.url.encode('utf-8')).hexdigest()[:12]}",
+            channel_id="web",
+            channel_name=domain,
+            label=f"Web · {result.title}",
+            permalink=result.url,
+        )
+
+    @staticmethod
+    def _clean_web_answer(value: str) -> str:
+        without_thinking = re.sub(
+            r"<think>.*?</think>",
+            "",
+            value,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        return re.sub(r"[ \t]*\[W\d+\]", "", without_thinking).strip()
+
+    @staticmethod
+    def _web_fallback(
+        results: list[WebSearchResult],
+        tavily_answer: str | None,
+    ) -> str:
+        if tavily_answer:
+            return tavily_answer
+        lines = ["Mình tìm thấy các nguồn web liên quan nhất:"]
+        for result in results[:3]:
+            excerpt = result.content
+            if len(excerpt) > 320:
+                excerpt = f"{excerpt[:317]}..."
+            lines.append(f"• **{result.title}** — {excerpt}")
+        return "\n".join(lines)
+
+    @staticmethod
     def _clean_rag_answer(value: str) -> str:
         marker = (
             r"\[?SOURCE_ID=[A-Za-z0-9_-]+\|TYPE="
@@ -403,13 +542,19 @@ class ChatService:
         message_id: str,
         query: str,
         channel_id: str,
+        *,
+        reference: datetime,
+        time_zone: str,
+        duration_minutes: int,
     ) -> MemoryCandidate | None:
         lowered = _normal(query)
-        if "?" in query:
+        if "?" in query and not calendar_requested(query):
             return None
 
         kind: str | None = None
-        if any(
+        if calendar_requested(query):
+            kind = "task"
+        elif any(
             term in lowered
             for term in [
                 "team minh chot",
@@ -424,7 +569,26 @@ class ChatService:
             kind = "decision"
         elif any(
             term in lowered
-            for term in ["minh se", "mình sẽ", "phu trach", "phụ trách", "deadline", "can xong"]
+            for term in [
+                "minh se",
+                "mình sẽ",
+                "phu trach",
+                "phụ trách",
+                "deadline",
+                "can xong",
+                "them task",
+                "thêm task",
+                "google calendar",
+                "google calender",
+                "gg calendar",
+                "gg calender",
+                "dat lich",
+                "đặt lịch",
+                "nhac toi",
+                "nhắc tôi",
+                "nhac minh",
+                "nhắc mình",
+            ]
         ):
             kind = "task"
         elif any(
@@ -470,6 +634,91 @@ class ChatService:
             evidence=[message_id],
             created_by=user.id,
             created_at=now(),
+            calendar_event=(
+                parse_calendar_event_draft(
+                    query,
+                    reference=reference,
+                    time_zone=time_zone,
+                    duration_minutes=duration_minutes,
+                )
+                if kind == "task"
+                else None
+            ),
+        )
+
+    def _pending_calendar_candidate(
+        self,
+        user: CommunityUser,
+    ) -> MemoryCandidate | None:
+        for raw in reversed(self.store.snapshot()["candidates"]):
+            if (
+                raw["created_by"] == user.id
+                and raw.get("calendar_event")
+                and can_write_scope(
+                    user,
+                    raw["scope_type"],
+                    raw["scope_id"],
+                )
+            ):
+                return MemoryCandidate.model_validate(raw)
+        return None
+
+    async def dismiss_candidate(
+        self,
+        candidate_id: str,
+        user: CommunityUser,
+    ) -> None:
+        def operation(state: dict):
+            candidate = next(
+                (
+                    item
+                    for item in state["candidates"]
+                    if item["id"] == candidate_id
+                ),
+                None,
+            )
+            if not candidate:
+                raise KeyError(candidate_id)
+            if candidate["created_by"] != user.id or not can_write_scope(
+                user,
+                candidate["scope_type"],
+                candidate["scope_id"],
+            ):
+                raise PermissionError(candidate_id)
+            state["candidates"] = [
+                item
+                for item in state["candidates"]
+                if item["id"] != candidate_id
+            ]
+            return True
+
+        self.store.mutate(operation)
+
+    @staticmethod
+    def _calendar_draft_answer(candidate: MemoryCandidate) -> str:
+        draft = candidate.calendar_event
+        if not draft:
+            return (
+                "Mình có thể thêm task vào Google Calendar, nhưng cần bạn cho biết "
+                "ngày hoặc giờ cụ thể. Ví dụ: “Thêm task hoàn thiện slide vào "
+                "Google Calendar lúc 20h ngày mai”."
+            )
+        if draft.all_day:
+            schedule = draft.start_date.strftime("%d/%m/%Y") if draft.start_date else ""
+            schedule_label = f"cả ngày {schedule}"
+        else:
+            schedule = (
+                draft.start_at.strftime("%H:%M · %d/%m/%Y")
+                if draft.start_at
+                else ""
+            )
+            schedule_label = schedule
+        return (
+            f"Mình đã chuẩn bị task **{draft.summary}** vào {schedule_label} "
+            f"({draft.time_zone}).\n\n"
+            "**Email Google dùng cho Calendar của bạn là gì?** "
+            "Bạn chỉ cần trả lời email ở tin nhắn tiếp theo. Agent sẽ dùng email "
+            "đó để gửi lời mời; trước lúc bạn trả lời, lịch chưa bị thay đổi."
         )
 
     async def chat(
@@ -487,6 +736,379 @@ class ChatService:
             content=query.strip(),
             created_at=now(),
         )
+        pending_calendar = self._pending_calendar_candidate(user)
+        supplied_email = extract_email(query)
+        if pending_calendar and (
+            supplied_email or not calendar_requested(query)
+        ):
+            lowered = _normal(query)
+            cancelled = bool(
+                re.fullmatch(
+                    (
+                        r"\s*(?:huy|hủy|bo qua|bỏ qua|khong can|"
+                        r"không cần|thoi|thôi)(?:\s+nua|\s+nữa)?[.!]?\s*"
+                    ),
+                    lowered,
+                )
+            )
+            email = supplied_email
+            sensitive_input = bool(email or "@" in query)
+            if sensitive_input:
+                user_message.content = "[Email Google Calendar đã cung cấp]"
+
+            candidate: MemoryCandidate | None = pending_calendar
+            tool_calls: list[dict] = []
+            response_provider = "google-calendar-awaiting-email"
+            memory_used: list[str] = []
+            if cancelled:
+                if persist:
+                    await self.dismiss_candidate(pending_calendar.id, user)
+                candidate = None
+                answer = (
+                    "Mình đã hủy yêu cầu thêm lịch. Không có invitation nào "
+                    "được gửi."
+                )
+            elif not email:
+                answer = (
+                    "Email này chưa hợp lệ. Bạn hãy gửi địa chỉ đầy đủ, ví dụ "
+                    "`ban@gmail.com`, hoặc nhắn **hủy** để bỏ yêu cầu."
+                )
+            elif not persist:
+                answer = (
+                    "Đã nhận email cho bước kiểm thử, nhưng chế độ evaluation "
+                    "không được phép ghi ra Google Calendar."
+                )
+            else:
+                try:
+                    if not self.calendar_action:
+                        raise GoogleCalendarError(
+                            "Calendar action chưa được khởi tạo."
+                        )
+                    calendar_result = await self.calendar_action(
+                        pending_calendar.id,
+                        user,
+                        email,
+                    )
+                    candidate = None
+                    response_provider = "google-calendar-invitation"
+                    memory_used = [calendar_result.memory.id]
+                    answer = (
+                        f"Đã gửi lời mời **{calendar_result.summary}** tới email "
+                        "bạn vừa cung cấp. Người nhận có thể cần bấm chấp nhận, "
+                        "tùy cài đặt Google Calendar.\n\n"
+                        f"[Mở sự kiện trên Google Calendar]"
+                        f"({calendar_result.html_link})"
+                    )
+                    tool_calls = [
+                        {
+                            "name": "send_google_calendar_invitation",
+                            "arguments": {
+                                "candidate_id": pending_calendar.id,
+                                "attendee_count": 1,
+                            },
+                            "reason": (
+                                "Người dùng đã cung cấp email sau khi yêu cầu "
+                                "nhắc lịch."
+                            ),
+                            "result_count": 1,
+                        }
+                    ]
+                except (
+                    GoogleCalendarError,
+                    httpx.HTTPError,
+                    KeyError,
+                    PermissionError,
+                    ValueError,
+                ) as exc:
+                    candidate = pending_calendar
+                    response_provider = "google-calendar-invitation-error"
+                    answer = (
+                        "Mình đã nhận email nhưng chưa gửi được invitation. "
+                        f"{redact_emails(str(exc))} Sau khi cấu hình Calendar "
+                        "được hoàn tất, bạn hãy gửi lại email để thử lại."
+                    )
+                    tool_calls = [
+                        {
+                            "name": "send_google_calendar_invitation",
+                            "arguments": {
+                                "candidate_id": pending_calendar.id,
+                                "attendee_count": 1,
+                            },
+                            "reason": "Calendar invitation chưa gửi thành công.",
+                            "result_count": 0,
+                        }
+                    ]
+
+            assistant_message = AssistantMessage(
+                id=f"turn-{uuid4().hex[:10]}",
+                role="assistant",
+                author_name="Trợ lý ZicZord",
+                content=answer,
+                memory_used=memory_used,
+                created_at=now(),
+            )
+
+            def email_operation(state: dict):
+                state["assistant_messages"].setdefault(user.id, [])
+                state["assistant_messages"][user.id].extend(
+                    [
+                        user_message.model_dump(mode="json"),
+                        assistant_message.model_dump(mode="json"),
+                    ]
+                )
+                return True
+
+            if persist:
+                self.store.mutate(email_operation)
+                await self.hindsight.retain_evidence(
+                    user_message.id,
+                    user_message.content,
+                    "user",
+                    user.id,
+                )
+            return ChatResponse(
+                message=assistant_message,
+                candidate=candidate,
+                provider=response_provider,
+                tool_calls=tool_calls,
+                sensitive_input_consumed=sensitive_input,
+            )
+
+        if extract_email(query):
+            user_message.content = "[Email Google Calendar đã cung cấp]"
+            assistant_message = AssistantMessage(
+                id=f"turn-{uuid4().hex[:10]}",
+                role="assistant",
+                author_name="Trợ lý ZicZord",
+                content=(
+                    "Mình chưa có yêu cầu nhắc lịch nào đang chờ email. "
+                    "Hãy mô tả task và thời gian trước, ví dụ: "
+                    "“Nhắc tôi nộp báo cáo lúc 9h ngày mai”."
+                ),
+                created_at=now(),
+            )
+
+            def orphan_email_operation(state: dict):
+                state["assistant_messages"].setdefault(user.id, [])
+                state["assistant_messages"][user.id].extend(
+                    [
+                        user_message.model_dump(mode="json"),
+                        assistant_message.model_dump(mode="json"),
+                    ]
+                )
+                return True
+
+            if persist:
+                self.store.mutate(orphan_email_operation)
+                await self.hindsight.retain_evidence(
+                    user_message.id,
+                    user_message.content,
+                    "user",
+                    user.id,
+                )
+            return ChatResponse(
+                message=assistant_message,
+                candidate=None,
+                provider="google-calendar-no-pending-request",
+                sensitive_input_consumed=True,
+            )
+
+        conversation_answer = self._conversation_reply(user, query)
+        if conversation_answer:
+            assistant_message = AssistantMessage(
+                id=f"turn-{uuid4().hex[:10]}",
+                role="assistant",
+                author_name="Trợ lý ZicZord",
+                content=conversation_answer,
+                created_at=now(),
+            )
+
+            def conversation_operation(state: dict):
+                state["assistant_messages"].setdefault(user.id, [])
+                state["assistant_messages"][user.id].extend(
+                    [
+                        user_message.model_dump(mode="json"),
+                        assistant_message.model_dump(mode="json"),
+                    ]
+                )
+                return True
+
+            if persist:
+                self.store.mutate(conversation_operation)
+            return ChatResponse(
+                message=assistant_message,
+                provider="conversation-router",
+            )
+
+        candidate = self._candidate_for(
+            user,
+            user_message.id,
+            query,
+            channel_id,
+            reference=user_message.created_at,
+            time_zone=self.llm.settings.google_calendar_timezone,
+            duration_minutes=self.llm.settings.google_calendar_default_duration_minutes,
+        )
+        if calendar_requested(query):
+            if not candidate or not candidate.calendar_event:
+                candidate = None
+            answer = self._calendar_draft_answer(
+                candidate
+                or MemoryCandidate(
+                    id=f"candidate-{uuid4().hex[:10]}",
+                    scope_type="user",
+                    scope_id=user.id,
+                    kind="task",
+                    content=query.strip(),
+                    evidence=[user_message.id],
+                    created_by=user.id,
+                    created_at=now(),
+                )
+            )
+            assistant_message = AssistantMessage(
+                id=f"turn-{uuid4().hex[:10]}",
+                role="assistant",
+                author_name="Trợ lý ZicZord",
+                content=answer,
+                created_at=now(),
+            )
+            tool_calls = (
+                [
+                    {
+                        "name": "prepare_google_calendar_event",
+                        "arguments": candidate.calendar_event.model_dump(mode="json"),
+                        "reason": (
+                            "Người dùng yêu cầu tạo task trên Google Calendar; "
+                            "agent chỉ chuẩn bị draft trước bước xác nhận."
+                        ),
+                        "result_count": 1,
+                    }
+                ]
+                if candidate and candidate.calendar_event
+                else []
+            )
+
+            def calendar_operation(state: dict):
+                state["assistant_messages"].setdefault(user.id, [])
+                state["assistant_messages"][user.id].extend(
+                    [
+                        user_message.model_dump(mode="json"),
+                        assistant_message.model_dump(mode="json"),
+                    ]
+                )
+                if candidate:
+                    state["candidates"].append(candidate.model_dump(mode="json"))
+                return True
+
+            if persist:
+                self.store.mutate(calendar_operation)
+                await self.hindsight.retain_evidence(
+                    user_message.id,
+                    query,
+                    "user",
+                    user.id,
+                )
+            return ChatResponse(
+                message=assistant_message,
+                candidate=candidate,
+                provider="google-calendar-draft",
+                tool_calls=tool_calls,
+            )
+
+        if self.web_search and self.web_search.requested(query):
+            search_query = self.web_search.search_query(query)
+            explicit_web_request = self.web_search.explicitly_requested(query)
+            try:
+                web_response = await self.web_search.search(query)
+                raw_answer = await self.llm.answer_with_web_context(
+                    query,
+                    web_response.results,
+                    self._web_fallback(
+                        web_response.results,
+                        web_response.answer,
+                    ),
+                )
+                cited_indexes = list(
+                    dict.fromkeys(
+                        int(value)
+                        for value in re.findall(r"\[W(\d+)\]", raw_answer)
+                    )
+                )
+                cited_results = (
+                    [
+                        web_response.results[index - 1]
+                        for index in cited_indexes
+                        if 1 <= index <= len(web_response.results)
+                    ]
+                    or web_response.results[:4]
+                )
+                answer = self._clean_web_answer(raw_answer)
+                citations = [
+                    self._web_citation(result)
+                    for result in cited_results[:4]
+                ]
+                provider = f"tavily+{self.llm.status().name}"
+                result_count = len(web_response.results)
+                reason = (
+                    (
+                        "Người dùng yêu cầu tra cứu Internet."
+                        if explicit_web_request
+                        else "Câu hỏi nhắm tới kiến thức công khai ngoài context lớp."
+                    )
+                    + " Chỉ câu hỏi hiện tại được gửi tới Tavily, không gửi "
+                    "context Discord hoặc memory."
+                )
+            except WebSearchError:
+                answer = (
+                    "Mình chưa truy cập được web search lúc này. "
+                    "Bạn có thể thử lại sau hoặc hỏi bằng nguồn Discord/bài học "
+                    "đã được cấp quyền."
+                )
+                citations = []
+                provider = "tavily-error"
+                result_count = 0
+                reason = "Tavily chưa cấu hình hoặc không trả về nguồn hợp lệ."
+
+            assistant_message = AssistantMessage(
+                id=f"turn-{uuid4().hex[:10]}",
+                role="assistant",
+                author_name="Trợ lý ZicZord",
+                content=answer,
+                citations=citations,
+                created_at=now(),
+            )
+
+            def web_operation(state: dict):
+                state["assistant_messages"].setdefault(user.id, [])
+                state["assistant_messages"][user.id].extend(
+                    [
+                        user_message.model_dump(mode="json"),
+                        assistant_message.model_dump(mode="json"),
+                    ]
+                )
+                return True
+
+            if persist:
+                self.store.mutate(web_operation)
+                await self.hindsight.retain_evidence(
+                    user_message.id,
+                    query,
+                    "user",
+                    user.id,
+                )
+            return ChatResponse(
+                message=assistant_message,
+                provider=provider,
+                tool_calls=[
+                    {
+                        "name": "search_web",
+                        "arguments": {"query": search_query, "provider": "tavily"},
+                        "reason": reason,
+                        "result_count": result_count,
+                    }
+                ],
+            )
+
         evidence = self._evidence_for(user, query)
         memories = self._visible_memories(user)
         tool_retrieval = (
@@ -600,8 +1222,6 @@ class ChatService:
             memory_used=used_ids,
             created_at=now(),
         )
-        candidate = self._candidate_for(user, user_message.id, query, channel_id)
-
         def operation(state: dict):
             state["assistant_messages"].setdefault(user.id, [])
             state["assistant_messages"][user.id].extend(
@@ -653,7 +1273,10 @@ class ChatService:
             state["candidates"].pop(index)
             timestamp = iso_now()
             memory = {
-                "id": f"mem-{uuid4().hex[:10]}",
+                "id": (
+                    "mem-"
+                    + hashlib.sha256(candidate_id.encode("utf-8")).hexdigest()[:10]
+                ),
                 "scope_type": candidate["scope_type"],
                 "scope_id": candidate["scope_id"],
                 "kind": candidate["kind"],

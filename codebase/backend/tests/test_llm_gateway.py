@@ -6,6 +6,7 @@ import httpx
 from app.config import Settings
 from app.llm_gateway import LLMGateway
 from app.schemas import CommunityUser, DiscordMessage
+from app.web_search import WebSearchResult
 
 
 def configured_settings() -> Settings:
@@ -92,3 +93,74 @@ def test_daily_brief_rejects_hallucinated_owner_and_deadline(monkeypatch):
     assert items[0]["owner"] is None
     assert items[0]["deadline"] is None
     assert items[0]["message_id"] == "m1"
+
+
+def test_chat_prompt_only_uses_catchup_template_when_user_requests_it(monkeypatch):
+    gateway = LLMGateway(configured_settings())
+    user = CommunityUser(
+        id="U1",
+        discord_user_id="discord-u1",
+        name="An",
+        member_label="T001",
+        role="student",
+        cohort_id="K4",
+        team_id="T001",
+        group_id="G1",
+    )
+    message = DiscordMessage(
+        id="m1",
+        source_message_id="m1",
+        channel_id="general",
+        author_id="U2",
+        author_name="Lan",
+        content="Team chốt làm demo memory trước 18h.",
+        created_at=datetime(2026, 7, 31, tzinfo=UTC),
+        permalink="https://discord.test/m1",
+    )
+    captured = {}
+
+    async def fake_complete(system_prompt, user_prompt, **kwargs):
+        captured["system_prompt"] = system_prompt
+        return "Team chốt làm demo memory trước 18h. [S1]"
+
+    monkeypatch.setattr(gateway, "_complete", fake_complete)
+
+    result = asyncio.run(
+        gateway.answer(
+            user,
+            "Team chốt gì?",
+            [message],
+            [],
+            "fallback",
+        )
+    )
+
+    assert result.endswith("[S1]")
+    assert "không tự tạo bản cập nhật" in captured["system_prompt"]
+    assert "không ép thành template" in captured["system_prompt"]
+
+
+def test_web_answer_requires_valid_source_markers(monkeypatch):
+    gateway = LLMGateway(configured_settings())
+    sources = [
+        WebSearchResult(
+            title="Official source",
+            url="https://example.com/source",
+            content="The release date is 7 October 2025.",
+        )
+    ]
+
+    async def fake_complete(*_args, **_kwargs):
+        return "Ngày phát hành là 7/10/2025. [W1]"
+
+    monkeypatch.setattr(gateway, "_complete", fake_complete)
+
+    result = asyncio.run(
+        gateway.answer_with_web_context(
+            "Ngày phát hành là khi nào?",
+            sources,
+            "fallback",
+        )
+    )
+
+    assert result.endswith("[W1]")

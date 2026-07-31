@@ -6,6 +6,7 @@
   --surface-strong: #e1e5dd;
   --ink: #15191a;
   --muted: #68706d;
+  --muted-strong: #505a55;
   --line: #d6dbd3;
   --accent: #b8ef71;
   --accent-soft: #e8f8d4;
@@ -21,6 +22,7 @@
   --surface-strong: #1c2225;
   --ink: #edf2ec;
   --muted: #929c96;
+  --muted-strong: #aeb8b2;
   --line: #293136;
   --accent: #b8ef71;
   --accent-soft: #24351e;
@@ -37,6 +39,7 @@
     --surface-strong: #1c2225;
     --ink: #edf2ec;
     --muted: #929c96;
+    --muted-strong: #aeb8b2;
     --line: #293136;
     --accent: #b8ef71;
     --accent-soft: #24351e;
@@ -52,6 +55,7 @@
   --color-surface: var(--surface);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
+  --color-muted-strong: var(--muted-strong);
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
@@ -1607,6 +1611,7 @@ button:disabled {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .thread-content {

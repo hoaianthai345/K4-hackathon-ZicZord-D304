@@ -275,7 +275,11 @@ class TelegramService:
             channel_id="telegram-private",
             source="telegram",
             external_user_id=str(sender.id),
-            question=text,
+            question=(
+                "[Email Google Calendar đã cung cấp]"
+                if response.sensitive_input_consumed
+                else text
+            ),
             answer=response.message.content,
             provider=response.provider,
             citations=[

@@ -15,6 +15,54 @@ USERS = [
         "lab_room_id": "LAB-D304",
     },
     {
+        "id": "U01520",
+        "discord_user_id": "discord-01520",
+        "name": "Nguyễn Hữu Tuyến",
+        "member_label": "T004-Nguyễn Hữu Tuyến-01520",
+        "role": "student",
+        "cohort_id": "K4",
+        "team_id": "T004",
+        "group_id": "G10",
+        "lecture_room_id": "LEC-D302",
+        "lab_room_id": "LAB-D304",
+    },
+    {
+        "id": "U01866",
+        "discord_user_id": "discord-01866",
+        "name": "Vũ Thành Khang",
+        "member_label": "T004-Vũ Thành Khang-01866",
+        "role": "student",
+        "cohort_id": "K4",
+        "team_id": "T004",
+        "group_id": "G10",
+        "lecture_room_id": "LEC-D302",
+        "lab_room_id": "LAB-D304",
+    },
+    {
+        "id": "U01531",
+        "discord_user_id": "discord-01531",
+        "name": "Trịnh Bá Khánh Trình",
+        "member_label": "T004-Trịnh Bá Khánh Trình-01531",
+        "role": "student",
+        "cohort_id": "K4",
+        "team_id": "T004",
+        "group_id": "G10",
+        "lecture_room_id": "LEC-D302",
+        "lab_room_id": "LAB-D304",
+    },
+    {
+        "id": "U01350",
+        "discord_user_id": "discord-01350",
+        "name": "Nguyễn Văn Phúc",
+        "member_label": "T004-Nguyễn Văn Phúc-01350",
+        "role": "student",
+        "cohort_id": "K4",
+        "team_id": "T004",
+        "group_id": "G10",
+        "lecture_room_id": "LEC-D302",
+        "lab_room_id": "LAB-D304",
+    },
+    {
         "id": "U01823",
         "discord_user_id": "discord-01823",
         "name": "Nguyễn Đức Dũng",
@@ -213,6 +261,80 @@ def _message(
         "permalink": f"https://discord.com/channels/demo-k4/{channel_id}/{identifier}",
         "source": "demo",
     }
+
+
+def t004_pitch_context() -> list[dict]:
+    """Return an idempotent pitch pack that only targets the private T004 channel."""
+    return [
+        _message(
+            "pitch-t004-001",
+            "team-t004",
+            "U01520",
+            "T004-Nguyễn Hữu Tuyến-01520",
+            (
+                "Team T004 chốt luồng pitch: đọc context #t-004, tạo brief có nguồn, "
+                "sau đó người dùng xác nhận để tạo Google Task."
+            ),
+            hours=-2,
+            minutes=-30,
+        ),
+        _message(
+            "pitch-t004-002",
+            "team-t004",
+            "U01520",
+            "T004-Nguyễn Hữu Tuyến-01520",
+            "Tuyến phụ trách chốt kịch bản pitch trước 18h ngày mai.",
+            hours=-2,
+        ),
+        _message(
+            "pitch-t004-003",
+            "team-t004",
+            "U01350",
+            "T004-Nguyễn Văn Phúc-01350",
+            "Phúc làm màn hình brief và nút Google Tasks trước 19h ngày mai.",
+            hours=-1,
+            minutes=-40,
+        ),
+        _message(
+            "pitch-t004-004",
+            "team-t004",
+            "U01862",
+            "T004-Thái Hoài An-01862",
+            "An cần kiểm tra API tạo task và test scope T004 trước 20h ngày mai.",
+            hours=-1,
+            minutes=-20,
+        ),
+        _message(
+            "pitch-t004-005",
+            "team-t004",
+            "U01866",
+            "T004-Vũ Thành Khang-01866",
+            (
+                "Blocker: Khang chưa có OAuth Google Tasks cho chế độ live; "
+                "khi pitch phải hiển thị rõ nếu đang dùng pitch-mock."
+            ),
+            hours=-1,
+        ),
+        _message(
+            "pitch-t004-006",
+            "team-t004",
+            "U01531",
+            "T004-Trịnh Bá Khánh Trình-01531",
+            (
+                "Team thống nhất context mock chỉ nằm trong #t-004, "
+                "không ghi vào kênh chung, group mentor hoặc phòng học."
+            ),
+            minutes=-45,
+        ),
+        _message(
+            "pitch-t004-007",
+            "team-t004",
+            "U01350",
+            "T004-Nguyễn Văn Phúc-01350",
+            "Deploy xong đi ăn phở nha 😂",
+            minutes=-30,
+        ),
+    ]
 
 
 def initial_state() -> dict:
@@ -464,4 +586,6 @@ def initial_state() -> dict:
         "catchup_briefs": {},
         "checklists": {},
         "acknowledged_briefs": {},
+        "calendar_events": {},
+        "google_tasks": {},
     }

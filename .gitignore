@@ -18,6 +18,10 @@ __pycache__/
 *.py[cod]
 codebase/backend/state/*.json
 codebase/config/telegram-users.json
+codebase/config/google-service-account.json
+codebase/config/google-calendar-oauth-client.json
+codebase/config/google-calendar-oauth-token.json
+codebase/config/google-tasks-oauth.json
 
 # Local Hindsight state and demo outputs
 .hindsight/

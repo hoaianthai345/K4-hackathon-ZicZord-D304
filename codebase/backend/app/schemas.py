@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -74,6 +74,18 @@ class Memory(BaseModel):
     updated_at: datetime
 
 
+class CalendarEventDraft(BaseModel):
+    summary: str = Field(min_length=1, max_length=180)
+    description: str = Field(default="", max_length=2000)
+    time_zone: str = Field(default="Asia/Ho_Chi_Minh", min_length=1, max_length=80)
+    attendee_email: str | None = Field(default=None, max_length=254)
+    all_day: bool = False
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
 class MemoryCandidate(BaseModel):
     id: str
     scope_type: ScopeType
@@ -84,6 +96,7 @@ class MemoryCandidate(BaseModel):
     created_by: str
     status: Literal["proposed"] = "proposed"
     created_at: datetime
+    calendar_event: CalendarEventDraft | None = None
 
 
 class AssistantMessage(BaseModel):
@@ -154,6 +167,7 @@ class ChatResponse(BaseModel):
     candidate: MemoryCandidate | None = None
     provider: str
     tool_calls: list[ContextToolCall] = Field(default_factory=list)
+    sensitive_input_consumed: bool = False
 
 
 class TelegramUser(BaseModel):
@@ -220,6 +234,15 @@ class CatchupRequest(BaseModel):
     scope: CatchupScope = "all_allowed"
 
 
+class PitchContextResponse(BaseModel):
+    team_id: Literal["T004"] = "T004"
+    channel_id: Literal["team-t004"] = "team-t004"
+    imported_count: int
+    total_team_message_count: int
+    preserved_non_team_message_count: int
+    message_ids: list[str] = Field(default_factory=list)
+
+
 class ChecklistItem(BaseModel):
     id: str
     user_id: str
@@ -234,6 +257,33 @@ class ChecklistItem(BaseModel):
 
 class ChecklistUpdate(BaseModel):
     completed: bool
+
+
+class CalendarTaskResponse(BaseModel):
+    event_id: str
+    html_link: str
+    summary: str
+    time_zone: str
+    all_day: bool
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    memory: Memory
+
+
+class GoogleTaskResponse(BaseModel):
+    task_id: str
+    tasklist_id: str
+    title: str
+    notes: str
+    due: datetime | None = None
+    status: Literal["needsAction", "completed"] = "needsAction"
+    html_link: str
+    provider: Literal["google-tasks", "pitch-mock"]
+    source_brief_id: str
+    source_item_id: str
+    scope_key: Literal["team:T004"] = "team:T004"
 
 
 class MemoryUpdate(BaseModel):
@@ -269,7 +319,17 @@ class HealthResponse(BaseModel):
     database_learning_contexts: int = 0
     rag_reachable: bool | None = None
     rag_indexed_scopes: list[str] = Field(default_factory=list)
+    web_search_provider: Literal["tavily", "not-configured"] = "not-configured"
     telegram_configured: bool = False
+    google_calendar_configured: bool = False
+    google_calendar_provider: Literal[
+        "google-calendar-oauth",
+        "google-calendar-service-account",
+        "not-configured",
+    ] = "not-configured"
+    google_tasks_mode: Literal["google-tasks", "pitch-mock", "not-configured"] = (
+        "not-configured"
+    )
 
 
 class RAGQueryRequest(BaseModel):

@@ -5,8 +5,8 @@ Trạng thái: pivot 31/07/2026 sau 5 interview — xem [spec.md §9 Changelog](
 
 **Lát cắt MỘT CÂU:** team học viên chat trong `#🤖-gõ-commands` → bot đọc + phân
 loại message thành candidate action item (task/decision/deadline/blocker/noise)
-trong scope allowed + đề xuất owner + đề xuất scope → user 1-click confirm/edit
-→ sync sang task tool (Jira/Sheets) + notify owner + track deadline. **Bot chỉ
+trong scope allowed + đề xuất owner + đề xuất scope → user confirm bằng click/email
+→ sync sang Google Calendar/task tool + notify owner + track deadline. **Bot chỉ
 propose, KHÔNG BAO GIỜ tự write.**
 
 ## Thành viên & phân công

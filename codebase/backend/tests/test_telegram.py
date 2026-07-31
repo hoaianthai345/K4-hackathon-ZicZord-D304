@@ -6,7 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.main import app, database, telegram_gateway, telegram_service
+from app.main import (
+    app,
+    database,
+    google_calendar,
+    telegram_gateway,
+    telegram_service,
+)
 from app.telegram_gateway import load_telegram_user_map, split_telegram_text
 from app.telegram_service import normalize_webhook_secret
 
@@ -114,6 +120,54 @@ def test_private_question_is_answered_and_logged(configured_telegram):
     assert logged["demo_user_id"] == "U01862"
     assert logged["profile_id"] is None
     assert logged["question"] == "Team mình đang chốt gì và còn blocker nào?"
+
+
+def test_calendar_email_reply_sends_invitation_and_redacts_log(
+    configured_telegram,
+    monkeypatch,
+):
+    send_mock, log_mock = configured_telegram
+    create_event = AsyncMock(
+        return_value={
+            "event_id": "telegram-calendar-event",
+            "html_link": "https://calendar.google.com/calendar/event?eid=test",
+            "summary": "nộp báo cáo",
+            "time_zone": "Asia/Ho_Chi_Minh",
+            "all_day": False,
+            "start_at": "2026-08-01T09:00:00+07:00",
+            "end_at": "2026-08-01T10:00:00+07:00",
+            "start_date": None,
+            "end_date": None,
+        }
+    )
+    monkeypatch.setattr(google_calendar, "create_event", create_event)
+
+    first = post_update(
+        telegram_update(
+            1020,
+            text="Nhắc tôi nộp báo cáo lúc 9h ngày mai",
+        )
+    )
+    second = post_update(
+        telegram_update(
+            1021,
+            text="student@example.com",
+        )
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert send_mock.await_count == 2
+    assert "Email Google dùng cho Calendar" in (
+        send_mock.await_args_list[0].args[1]
+    )
+    assert "Đã gửi lời mời" in send_mock.await_args_list[1].args[1]
+    assert log_mock.await_count == 2
+    assert log_mock.await_args_list[-1].kwargs["question"] == (
+        "[Email Google Calendar đã cung cấp]"
+    )
+    created_draft = create_event.await_args.args[0]
+    assert created_draft.attendee_email == "student@example.com"
 
 
 def test_duplicate_update_does_not_reply_twice(configured_telegram):

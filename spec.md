@@ -62,9 +62,9 @@ từ chat bị mất; deadline miss; thông tin phân tán qua ≥3 platform.
 
 ## 2. Lát cắt MVP — MỘT CÂU
 
-> **Team học viên** *(1 user)* **chat trong `#🤖-gõ-commands`** *(1 việc: bàn công việc)* **→ bot đọc + phân loại message thành candidate action item (task/decision/deadline/blocker/noise) trong scope allowed + đề xuất owner + đề xuất scope** *(1 quyết định AI)* **→ user 1-click confirm/edit → sync sang task tool (Jira/Sheets adapter) + notify owner + track deadline** *(1 kết quả)*.
+> **Team học viên** *(1 user)* **chat trong `#🤖-gõ-commands`** *(1 việc: bàn công việc)* **→ bot đọc + phân loại message thành candidate action item (task/decision/deadline/blocker/noise) trong scope allowed + đề xuất owner + đề xuất scope** *(1 quyết định AI)* **→ user confirm bằng click hoặc trả lời email → sync sang Google Calendar/task tool + notify owner + track deadline** *(1 kết quả)*.
 
-**Central AI decision:** classify(message, membership) → `{class ∈ [noise, task, decision, deadline, blocker], suggested_owner, suggested_scope, evidence_span}` — HỆ THỐNG KHÔNG BAO GIỜ TỰ WRITE task, chỉ propose; user confirm mới ghi ra Jira/Sheets.
+**Central AI decision:** classify(message, membership) → `{class ∈ [noise, task, decision, deadline, blocker], suggested_owner, suggested_scope, evidence_span}` — HỆ THỐNG KHÔNG BAO GIỜ TỰ WRITE task, chỉ propose; user confirm mới ghi ra Google Calendar/task tool.
 
 **Automation: conditional** — lý do cost-of-error (mentor cảnh báo trực tiếp trong interview 4):
 - **Sai thì đắt:** gán task từ câu đùa / gán owner sai / deadline sai → user phải dọn dẹp → mất trust → team bỏ dùng.
@@ -74,8 +74,8 @@ Happy path demo:
 
 1. Team T004 chat: *"@Tuấn deploy backend trước tối mai nhé"*.
 2. Bot ghim reply có card đề xuất: **task**: "Deploy backend"; **owner suggest**: Tuấn (U01246); **deadline suggest**: 2026-08-01 23:59; **scope**: team T004.
-3. Tuấn bấm ✓ confirm → task ghi ra Jira (hoặc Sheets fallback).
-4. Bot xác nhận: link Jira + đếm ngược deadline; notify Tuấn.
+3. Tuấn bấm ✓ confirm → task ghi ra Google Calendar.
+4. Bot xác nhận bằng link sự kiện; notify Tuấn.
 5. Nếu Tuấn bấm ✗ hoặc bot phân loại là `noise` (câu đùa) → không ghi, không hỏi lại.
 
 ## 3. Data model và quyền
@@ -289,6 +289,7 @@ MVP đạt khi:
 | 30/07/2026 | Thêm strict time/channel routing | Ngăn semantic retrieval lấy đúng chủ đề nhưng sai channel hoặc thời điểm |
 | **31/07/2026** | **PIVOT lát cắt: từ "Catch-up 24h" sang "Action-Item Extract + Sync"** | Sau 5 interview ([validation/interview-transcripts.md](validation/interview-transcripts.md)): 5/5 xác nhận pain "Discord bị bỏ rơi vì thiếu task tool"; 3/5 nói sẽ dùng nếu bot đọc chat + đồng bộ task tool. Value prop mạnh nhất: **Lợi "sẽ quay lại Discord"**. Slice cũ (catch-up) chưa được validate trực tiếp — giữ lại cho v2. |
 | 31/07/2026 | Chuyển automation từ "trả lời tự động" sang **conditional-with-confirm** | Warning từ Mentor: *"AI làm sai sẽ khiến người dùng cảm thấy mất công chui vào check và xóa"* — false positive từ câu đùa là risk lớn nhất. Bot chỉ được **propose candidate**; user confirm mới write ra external tool. |
+| 31/07/2026 | Thêm adapter **Google Calendar** | Agent parse ngày/giờ tiếng Việt thành event draft, hỏi email ở lượt kế tiếp rồi gửi invitation bằng `attendees` + `sendUpdates=all`. Email reply là bước xác nhận; creator + scope vẫn được kiểm tra. Event ID xác định theo candidate để retry không tạo trùng. |
 | 31/07/2026 | Cập nhật §16 willing users với 3 tên thật | Interview 3 (Tuấn 1246), 4 (Mentor), 5 (Lợi) đồng ý test — đủ tiêu chí 5 nghiệm thu. |
 
 ---
@@ -352,8 +353,8 @@ MVP đạt khi:
 | K08 | Team T009 hỏi bot tạo task cho member team T004 (cross-team) | ③ | Từ chối `403`; bot không được confirm cross-team | scopes.py guard |
 | K09 | Message chứa PII/số điện thoại/mật khẩu | ③ | Skip, không đề xuất task; log warning | privacy layer |
 | K10 | Deadline gần (< 24h) mà không có owner rõ | ④ | Card với warning màu đỏ; **luôn kèm khuyến cáo** "kiểm tra lại với team lead"; conf tối đa 0.5 | **G10** — cost-of-error deadline cao |
-| K11 | Bot tự confirm hộ user (auto-write không có click) | ④ (chống) | **Guard code chặn**: mọi write ra external tool phải qua endpoint `POST /confirm` với `user_id + candidate_id` — không có auto-mode | server-side gate |
-| K12 | Adapter Jira/Sheets down | ① | Card giữ trong app state; báo user *"Chưa sync được — thử lại"*; không mất data | resilience |
+| K11 | Bot tự confirm hộ user (auto-write khi chưa có email/click) | ④ (chống) | **Guard code chặn**: chat chỉ gọi Calendar service sau lượt email hợp lệ; API và service đều kiểm tra creator + scope — không có auto-mode | server-side gate |
+| K12 | Adapter Google Calendar down | ① | Candidate vẫn giữ nhưng email được xóa khỏi state; báo user gửi lại email sau khi connector phục hồi; event ID vẫn idempotent | resilience |
 
 **Case hiểm nhất:** K03 (câu đùa bị extract thành task). Đây là warning **trực tiếp
 từ Interview 4 (Mentor)**: *"AI làm sai sẽ khiến người dùng cảm thấy mất công chui

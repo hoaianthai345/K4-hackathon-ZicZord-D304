@@ -17,9 +17,41 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "ZicZord | Discord Catch-up Copilot",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  ),
+  title: "ZicZord | Discord Action Copilot",
   description:
-    "Trợ lý AI của Team ZicZord biến hội thoại Discord thành daily brief có nguồn kiểm chứng.",
+    "Biến hội thoại Discord thành action item có owner, deadline và human-confirmed sync qua MCP connectors.",
+  keywords: [
+    "Discord",
+    "MCP",
+    "Jira",
+    "AI agent",
+    "team management",
+    "action item",
+  ],
+  openGraph: {
+    title: "ZicZord | Discord Action Copilot",
+    description:
+      "Từ chat Discord thành task đã chốt, có owner, deadline và quyền hạn rõ ràng.",
+    type: "website",
+    locale: "vi_VN",
+    images: [
+      {
+        url: "/images/ziczord-mcp-workflow.png",
+        width: 1448,
+        height: 1086,
+        alt: "ZicZord chuyển hội thoại Discord thành action item qua MCP",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ZicZord | Discord Action Copilot",
+    description: "Từ chat Discord thành task đã chốt.",
+    images: ["/images/ziczord-mcp-workflow.png"],
+  },
 };
 
 export default function RootLayout({

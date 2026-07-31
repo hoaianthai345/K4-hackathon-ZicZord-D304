@@ -12,6 +12,10 @@ def split_order(value: str) -> list[str]:
     return [item.strip().casefold() for item in value.split(",") if item.strip()]
 
 
+def optional_path(value: str | None) -> Path | None:
+    return Path(value) if value else None
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "ZicZord Discord Catch-up Copilot API"
@@ -23,6 +27,13 @@ class Settings:
     apify_api_base_url: str = os.getenv("APIFY_API_BASE_URL", "https://api.apify.com/v2")
     apify_token: str | None = os.getenv("APIFY_TOKEN") or None
     apify_dataset_id: str | None = os.getenv("APIFY_DATASET_ID") or None
+    tavily_api_key: str | None = os.getenv("TAVILY_API_KEY") or None
+    tavily_api_base_url: str = os.getenv(
+        "TAVILY_API_BASE_URL",
+        "https://api.tavily.com",
+    )
+    tavily_search_depth: str = os.getenv("TAVILY_SEARCH_DEPTH", "basic")
+    tavily_max_results: int = int(os.getenv("TAVILY_MAX_RESULTS", "5"))
     openrouter_api_key: str | None = os.getenv("OPENROUTER_API_KEY") or None
     openrouter_api_base_url: str = os.getenv(
         "OPENROUTER_API_BASE_URL",
@@ -79,6 +90,68 @@ class Settings:
     )
     telegram_public_user_id: str | None = (
         os.getenv("TELEGRAM_PUBLIC_USER_ID") or None
+    )
+    google_calendar_auth_mode: str = os.getenv(
+        "GOOGLE_CALENDAR_AUTH_MODE",
+        "service-account",
+    ).strip().lower()
+    google_calendar_id: str | None = os.getenv("GOOGLE_CALENDAR_ID") or None
+    google_calendar_credentials_file: Path | None = optional_path(
+        os.getenv("GOOGLE_CALENDAR_CREDENTIALS_FILE")
+    )
+    google_calendar_credentials_json: str | None = (
+        os.getenv("GOOGLE_CALENDAR_CREDENTIALS_JSON") or None
+    )
+    google_calendar_delegated_user: str | None = (
+        os.getenv("GOOGLE_CALENDAR_DELEGATED_USER") or None
+    )
+    google_calendar_oauth_client_file: Path | None = optional_path(
+        os.getenv("GOOGLE_CALENDAR_OAUTH_CLIENT_FILE")
+    )
+    google_calendar_oauth_token_file: Path | None = optional_path(
+        os.getenv("GOOGLE_CALENDAR_OAUTH_TOKEN_FILE")
+    )
+    google_calendar_oauth_token_json: str | None = (
+        os.getenv("GOOGLE_CALENDAR_OAUTH_TOKEN_JSON") or None
+    )
+    google_calendar_organizer_email: str | None = (
+        os.getenv("GOOGLE_CALENDAR_ORGANIZER_EMAIL") or None
+    )
+    google_calendar_oauth_port: int = int(
+        os.getenv("GOOGLE_CALENDAR_OAUTH_PORT", "8765")
+    )
+    google_calendar_timezone: str = os.getenv(
+        "GOOGLE_CALENDAR_TIMEZONE",
+        "Asia/Ho_Chi_Minh",
+    )
+    google_calendar_default_duration_minutes: int = int(
+        os.getenv("GOOGLE_CALENDAR_DEFAULT_DURATION_MINUTES", "60")
+    )
+    google_calendar_api_base_url: str = os.getenv(
+        "GOOGLE_CALENDAR_API_BASE_URL",
+        "https://www.googleapis.com/calendar/v3",
+    )
+    google_tasks_mode: str = os.getenv("GOOGLE_TASKS_MODE", "mock").strip().lower()
+    google_tasks_tasklist_id: str = os.getenv(
+        "GOOGLE_TASKS_TASKLIST_ID",
+        "@default",
+    )
+    google_tasks_access_token: str | None = (
+        os.getenv("GOOGLE_TASKS_ACCESS_TOKEN") or None
+    )
+    google_tasks_credentials_file: Path | None = optional_path(
+        os.getenv("GOOGLE_TASKS_CREDENTIALS_FILE")
+    )
+    google_tasks_credentials_json: str | None = (
+        os.getenv("GOOGLE_TASKS_CREDENTIALS_JSON") or None
+    )
+    google_tasks_api_base_url: str = os.getenv(
+        "GOOGLE_TASKS_API_BASE_URL",
+        "https://tasks.googleapis.com/tasks/v1",
+    )
+    google_tasks_timezone: str = os.getenv(
+        "GOOGLE_TASKS_TIMEZONE",
+        "Asia/Ho_Chi_Minh",
     )
     database_url: str | None = os.getenv("DATABASE_URL") or None
     rag_enabled: bool = os.getenv("RAG_ENABLED", "false").lower() in {

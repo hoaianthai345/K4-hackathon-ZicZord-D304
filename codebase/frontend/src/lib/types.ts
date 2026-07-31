@@ -94,6 +94,18 @@ export type Memory = {
   updated_at: string;
 };
 
+export type CalendarEventDraft = {
+  summary: string;
+  description: string;
+  time_zone: string;
+  attendee_email: string | null;
+  all_day: boolean;
+  start_at: string | null;
+  end_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
+};
+
 export type MemoryCandidate = {
   id: string;
   scope_type: ScopeType;
@@ -104,6 +116,7 @@ export type MemoryCandidate = {
   created_by: string;
   status: "proposed";
   created_at: string;
+  calendar_event: CalendarEventDraft | null;
 };
 
 export type AssistantMessage = {
@@ -139,10 +152,20 @@ export type DiscordState = {
 };
 
 export type ChatResponse = {
-    message: AssistantMessage;
-    candidate: MemoryCandidate | null;
-    provider: string;
-    tool_calls: ContextToolCall[];
+  message: AssistantMessage;
+  candidate: MemoryCandidate | null;
+  provider: string;
+  tool_calls: ContextToolCall[];
+  sensitive_input_consumed: boolean;
+};
+
+export type PitchContextResponse = {
+  team_id: "T004";
+  channel_id: "team-t004";
+  imported_count: number;
+  total_team_message_count: number;
+  preserved_non_team_message_count: number;
+  message_ids: string[];
 };
 
 export type CatchupItem = {
@@ -168,6 +191,33 @@ export type CatchupBrief = {
   items: CatchupItem[];
   acknowledged: boolean;
   provider: string;
+};
+
+export type GoogleTaskResponse = {
+  task_id: string;
+  tasklist_id: string;
+  title: string;
+  notes: string;
+  due: string | null;
+  status: "needsAction" | "completed";
+  html_link: string;
+  provider: "google-tasks" | "pitch-mock";
+  source_brief_id: string;
+  source_item_id: string;
+  scope_key: "team:T004";
+};
+
+export type CalendarTaskResponse = {
+  event_id: string;
+  html_link: string;
+  summary: string;
+  time_zone: string;
+  all_day: boolean;
+  start_at: string | null;
+  end_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  memory: Memory;
 };
 
 export type ContextToolCall = {

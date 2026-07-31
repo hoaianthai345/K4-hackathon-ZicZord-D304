@@ -29,6 +29,8 @@ class JsonStore:
                     "acknowledged_briefs",
                 }
                 if required.issubset(self._state):
+                    self._state.setdefault("calendar_events", {})
+                    self._state.setdefault("google_tasks", {})
                     return
             except (json.JSONDecodeError, OSError):
                 pass

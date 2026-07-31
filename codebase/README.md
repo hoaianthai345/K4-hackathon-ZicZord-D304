@@ -5,6 +5,7 @@ Discord Catch-up Copilot cho lớp K4:
 - Bắt kịp các channel được phép đọc trong 24 giờ.
 - Trả brief gồm quyết định, việc cần làm, deadline, blocker và citation.
 - Tạo checklist hôm nay hoặc đánh dấu đã biết sau bản brief.
+- Đề xuất task từ hội thoại và thêm vào Google Calendar sau một lần xác nhận.
 - Giữ scope authorization và confirmed memory làm hạ tầng phía dưới.
 - Chuẩn hóa Discord export mà không sửa/xóa dữ liệu gốc.
 
@@ -80,6 +81,137 @@ Không đưa key thật vào source code, image Docker hoặc file được comm
 - Mỗi luồng thử các key còn lại khi gặp 401, 402, 429 hoặc lỗi provider.
 - Key lỗi quota được cooldown; `Retry-After` được tôn trọng khi có.
 
+## Web search với Tavily
+
+Web search chạy khi người dùng nói rõ ý định như `tìm trên web`,
+`tra cứu Internet`, `nguồn web`, `latest news`, hoặc hỏi tự nhiên về kiến thức
+công khai theo dạng `X là ai?`, `X là gì?`, `biết X không?`. Câu hỏi có dấu hiệu
+team, mentor, bài học, deadline, blocker hoặc channel vẫn dùng các nguồn nội bộ
+đã được cấp quyền.
+
+Backend chỉ gửi chính câu hỏi hiện tại sang Tavily, không gửi Discord context,
+confirmed memory hay danh tính học viên. Kết quả trả về có citation theo domain
+và mở trực tiếp trang nguồn.
+
+Đặt key thật trong `.env` đã được Git ignore:
+
+```dotenv
+TAVILY_API_KEY=
+TAVILY_API_BASE_URL=https://api.tavily.com
+TAVILY_SEARCH_DEPTH=basic
+TAVILY_MAX_RESULTS=5
+```
+
+Ví dụ:
+
+```text
+Tìm trên web tài liệu chính thức về Tavily Search API
+```
+
+## Google Calendar action tool
+
+Agent nhận câu tự nhiên như:
+
+```text
+Người dùng: Nhắc tôi hoàn thiện slide lúc 20h ngày mai
+Agent: Email Google dùng cho Calendar của bạn là gì?
+Người dùng: ban@example.com
+```
+
+Lượt đầu chỉ tạo draft. Email ở lượt hai là xác nhận rõ ràng để backend thêm
+`attendees[].email` và gọi `events.insert?sendUpdates=all`. Google gửi invitation
+tới người nhận; task đồng thời trở thành confirmed memory. Event ID được suy ra
+từ candidate ID nên request retry không tạo sự kiện trùng.
+
+Email được che trong chat history, PostgreSQL interaction log và Hindsight.
+Địa chỉ được truyền thẳng trong bộ nhớ tới connector và không được ghi vào
+candidate/calendar state, kể cả khi gửi thành công hoặc gặp lỗi.
+
+### Gmail cá nhân làm organizer
+
+1. Bật Google Calendar API, cấu hình OAuth consent screen dạng External và thêm
+   Gmail organizer vào Test users.
+2. Tạo OAuth Client ID loại **Desktop app**, tải JSON về
+   `config/google-calendar-oauth-client.json`.
+3. Điền `.env`:
+
+```dotenv
+GOOGLE_CALENDAR_AUTH_MODE=oauth
+GOOGLE_CALENDAR_ID=primary
+GOOGLE_CALENDAR_OAUTH_CLIENT_FILE=/app/config/google-calendar-oauth-client.json
+GOOGLE_CALENDAR_OAUTH_TOKEN_FILE=/app/state/google-calendar-oauth-token.json
+GOOGLE_CALENDAR_ORGANIZER_EMAIL=your-account@gmail.com
+GOOGLE_CALENDAR_OAUTH_PORT=8765
+GOOGLE_CALENDAR_TIMEZONE=Asia/Ho_Chi_Minh
+GOOGLE_CALENDAR_DEFAULT_DURATION_MINUTES=60
+```
+
+4. Build backend rồi chạy flow kết nối một lần:
+
+```bash
+docker compose up -d --build backend
+docker compose exec backend python -m app.google_calendar_oauth_setup
+```
+
+Mở URL được in ra, đăng nhập đúng Gmail organizer và chấp nhận scope
+`calendar.events`. Refresh token được lưu trong volume `/app/state`, không nằm
+trong frontend hoặc Git. `primary` là lịch chính của Gmail đã kết nối.
+
+### Google Workspace service account
+
+Đặt `GOOGLE_CALENDAR_AUTH_MODE=service-account`, lưu key tại
+`config/google-service-account.json`, cấp scope
+`https://www.googleapis.com/auth/calendar.events` bằng Domain-wide Delegation,
+và cấu hình `GOOGLE_CALENDAR_DELEGATED_USER` là organizer trong Workspace.
+Service account không có delegation sẽ bị chặn trước khi gửi attendee invitation.
+Không commit bất kỳ JSON credential hoặc token nào.
+
+## Pitch flow T004 → Google Tasks
+
+Trang `/chat` có nút **Nạp context & tạo brief** cho thành viên T004. Luồng này:
+
+1. Upsert 7 message pitch có ID cố định vào riêng channel `team-t004`.
+2. Tạo brief với `scope=team`; mọi citation trong brief phải là `#t-004`.
+3. Cho người dùng xác nhận từng task/blocker trước khi gọi Google Tasks.
+4. Chặn user ngoài T004 và chặn brief dùng scope khác `team:T004`.
+
+Loader không xóa hoặc sửa message ở `general`, cohort, group mentor, lecture, lab
+hay team khác. Bấm lại không tạo message hoặc task trùng.
+
+Mặc định `.env.example` dùng chế độ không phụ thuộc mạng:
+
+```dotenv
+GOOGLE_TASKS_MODE=mock
+GOOGLE_TASKS_TASKLIST_ID=@default
+```
+
+UI sẽ ghi rõ `pitch-mock (chưa ghi ra tài khoản Google)`. Để tạo Google Task
+thật, bật Google Tasks API, thực hiện OAuth consent cho đúng tài khoản với scope
+`https://www.googleapis.com/auth/tasks`, rồi dùng một trong hai cách:
+
+```dotenv
+# Cách ổn định cho pitch: authorized-user JSON có refresh_token.
+GOOGLE_TASKS_MODE=live
+GOOGLE_TASKS_TASKLIST_ID=@default
+GOOGLE_TASKS_CREDENTIALS_FILE=/app/config/google-tasks-oauth.json
+
+# Hoặc access token ngắn hạn.
+GOOGLE_TASKS_ACCESS_TOKEN=
+```
+
+File `config/google-tasks-oauth.json` đã được Git ignore và chỉ được mount
+read-only vào backend. Google Tasks lưu deadline theo ngày; giờ gốc vẫn được giữ
+trong phần notes cùng owner, scope và permalink Discord.
+
+Có thể kiểm tra lớp cô lập mà không mở UI:
+
+```bash
+curl -X POST "http://localhost:8000/api/pitch/t004/context?user_id=U01862"
+
+curl -X POST \
+  "http://localhost:8000/api/pitch/t004/brief?user_id=U01862"
+```
+
 ## Vercel frontend + Docker backend trên máy local
 
 Backend có thể public tạm thời qua Cloudflare Quick Tunnel:
@@ -114,12 +246,12 @@ Máy local, Docker Desktop và `cloudflared` phải tiếp tục chạy. Với d
 
 ## Kịch bản demo 2 phút
 
-1. Mở `/chat` với user Thái Hoài An.
-2. Bấm `Bắt kịp trong 24 giờ qua`.
-3. Chỉ bốn loại thông tin: đã chốt, cần làm, deadline, blocker.
-4. Mở citation về message Discord nguồn.
-5. Bấm `Tạo checklist hôm nay` và đánh dấu một việc hoàn tất.
-6. Chuyển sang Trần Mai Lan, team T009, để chứng minh T004 không xuất hiện.
+1. Mở `/chat` với user Thái Hoài An, team T004.
+2. Bấm **Nạp context & tạo brief** trong Pitch mode.
+3. Chỉ ra badge `team:T004 only` và mở một citation về đúng `#t-004`.
+4. Bấm **Xác nhận & tạo Google Task** ở một việc cần làm.
+5. Chỉ rõ kết quả là `Google Tasks thật` hoặc `pitch-mock`, không nhập nhằng.
+6. Chuyển sang Trần Mai Lan, team T009: Pitch mode biến mất và API trả `403`.
 
 ## Xử lý dataset local
 
