@@ -16,6 +16,9 @@ export function SiteNav() {
           <a className="nav-link" href="#scope">
             Memory scopes
           </a>
+          <a className="nav-link" href="#telegram">
+            Telegram
+          </a>
           <a className="nav-link" href="#trust">
             Quyền truy cập
           </a>

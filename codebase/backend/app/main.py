@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import (
+    BackgroundTasks,
     Depends,
     FastAPI,
     Header,
@@ -59,6 +60,8 @@ from .schemas import (
     RAGQueryResponse,
     RAGSource,
     RAGSourceRecord,
+    TelegramUpdate,
+    TelegramWebhookAck,
 )
 from .scopes import (
     allowed_scope_keys,
@@ -70,6 +73,8 @@ from .scopes import (
 )
 from .seed import USERS
 from .store import JsonStore
+from .telegram_gateway import TelegramGateway
+from .telegram_service import TelegramService
 
 
 store = JsonStore(settings.state_path)
@@ -82,6 +87,14 @@ context_tools = ContextToolService(database)
 chat_service = ChatService(store, hindsight, llm, rag, context_tools)
 catchup_service = CatchupService(store, llm)
 evaluation = EvaluationService(settings, chat_service)
+telegram_gateway = TelegramGateway(settings)
+telegram_service = TelegramService(
+    settings,
+    store,
+    chat_service,
+    telegram_gateway,
+    database,
+)
 
 
 @asynccontextmanager
@@ -169,6 +182,7 @@ async def health() -> HealthResponse:
         database_learning_contexts=database_status.learning_contexts,
         rag_reachable=rag_status["reachable"],
         rag_indexed_scopes=rag_status["indexed_scopes"],
+        telegram_configured=telegram_service.configured,
     )
 
 
@@ -276,6 +290,7 @@ async def chat(payload: ChatRequest) -> ChatResponse:
             profile_id=payload.profile_id,
             demo_user_id=user.id,
             channel_id=payload.channel_id,
+            source="web",
             question=payload.message,
             answer=response.message.content,
             provider=response.provider,
@@ -289,6 +304,31 @@ async def chat(payload: ChatRequest) -> ChatResponse:
             ],
         )
     return response
+
+
+@app.post(
+    "/api/connectors/telegram/webhook",
+    response_model=TelegramWebhookAck,
+)
+async def telegram_webhook(
+    payload: TelegramUpdate,
+    background_tasks: BackgroundTasks,
+    webhook_secret: str | None = Header(
+        default=None,
+        alias="X-Telegram-Bot-Api-Secret-Token",
+    ),
+) -> TelegramWebhookAck:
+    if not telegram_service.configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Connector Telegram chưa được cấu hình.",
+        )
+    if not telegram_service.verify_webhook_secret(webhook_secret):
+        raise HTTPException(status_code=403, detail="Telegram webhook secret sai.")
+    if not telegram_service.claim_update(payload.update_id):
+        return TelegramWebhookAck(accepted=False, reason="duplicate")
+    background_tasks.add_task(telegram_service.process_update, payload)
+    return TelegramWebhookAck(accepted=True, reason="accepted")
 
 
 @app.post("/api/rag/query", response_model=RAGQueryResponse)

@@ -17,6 +17,7 @@ __pycache__/
 .venv/
 *.py[cod]
 codebase/backend/state/*.json
+codebase/config/telegram-users.json
 
 # Local Hindsight state and demo outputs
 .hindsight/

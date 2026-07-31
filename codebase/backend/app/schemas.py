@@ -155,6 +155,39 @@ class ChatResponse(BaseModel):
     tool_calls: list[ContextToolCall] = Field(default_factory=list)
 
 
+class TelegramUser(BaseModel):
+    id: int
+    is_bot: bool = False
+    first_name: str
+    last_name: str | None = None
+    username: str | None = None
+
+
+class TelegramChat(BaseModel):
+    id: int
+    type: Literal["private", "group", "supergroup", "channel"]
+    title: str | None = None
+    username: str | None = None
+
+
+class TelegramMessage(BaseModel):
+    message_id: int
+    from_user: TelegramUser | None = Field(default=None, alias="from")
+    chat: TelegramChat
+    text: str | None = None
+
+
+class TelegramUpdate(BaseModel):
+    update_id: int
+    message: TelegramMessage | None = None
+
+
+class TelegramWebhookAck(BaseModel):
+    ok: Literal[True] = True
+    accepted: bool
+    reason: Literal["accepted", "duplicate"]
+
+
 class CatchupItem(BaseModel):
     id: str
     kind: CatchupKind
@@ -233,6 +266,7 @@ class HealthResponse(BaseModel):
     database_learning_contexts: int = 0
     rag_reachable: bool | None = None
     rag_indexed_scopes: list[str] = Field(default_factory=list)
+    telegram_configured: bool = False
 
 
 class RAGQueryRequest(BaseModel):

@@ -15,7 +15,7 @@ def split_order(value: str) -> list[str]:
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "ZicZord Discord Catch-up Copilot API"
-    app_version: str = "0.4.1"
+    app_version: str = "0.5.0"
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
     memory_provider: str = os.getenv("MEMORY_PROVIDER", "local").lower()
     hindsight_base_url: str = os.getenv("HINDSIGHT_BASE_URL", "http://hindsight:8888")
@@ -59,6 +59,27 @@ class Settings:
         "https://api.groq.com/openai/v1",
     )
     groq_model: str = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
+    telegram_bot_token: str | None = os.getenv("TELEGRAM_BOT_TOKEN") or None
+    telegram_webhook_secret: str | None = (
+        os.getenv("TELEGRAM_WEBHOOK_SECRET") or None
+    )
+    telegram_api_base_url: str = os.getenv(
+        "TELEGRAM_API_BASE_URL",
+        "https://api.telegram.org",
+    )
+    telegram_user_map_path: Path = Path(
+        os.getenv(
+            "TELEGRAM_USER_MAP_PATH",
+            str(
+                Path(__file__).resolve().parents[2]
+                / "config"
+                / "telegram-users.json"
+            ),
+        )
+    )
+    telegram_public_user_id: str | None = (
+        os.getenv("TELEGRAM_PUBLIC_USER_ID") or None
+    )
     database_url: str | None = os.getenv("DATABASE_URL") or None
     rag_enabled: bool = os.getenv("RAG_ENABLED", "false").lower() in {
         "1",

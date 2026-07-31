@@ -36,11 +36,40 @@ nhật hồ sơ hiện có thay vì tạo bản trùng.
 PostgreSQL lưu hai bảng tối giản:
 
 - `learner_profiles`: họ tên, 5 số cuối, demo user mapping và thời điểm gần nhất.
-- `chat_interactions`: câu hỏi, câu trả lời, provider, citation và tool call.
+- `chat_interactions`: nguồn web/Telegram, câu hỏi, câu trả lời, provider,
+  citation và tool call.
 
 Hệ thống không thu IP, user agent, mã sinh viên đầy đủ hoặc lịch sử chỉnh sửa.
 Log chỉ được ghi khi chat từ một hồ sơ đã nhận diện; lỗi ghi log không làm mất
 câu trả lời đang trả cho học viên.
+
+## Telegram bot
+
+Bot `@ZicZordAI20K4Bot` dùng cùng `ChatService`, context tools, RAG và scope gate
+với web. Bot chỉ trả lời trong private chat; group chat bị từ chối để tránh lộ
+context cá nhân/team. Mỗi câu hỏi hợp lệ được lưu vào `chat_interactions` với
+`source=telegram` và Telegram user ID, không lưu username hay số điện thoại.
+
+Đặt trong `.env`:
+
+```dotenv
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_PUBLIC_USER_ID=U01862
+NEXT_PUBLIC_TELEGRAM_BOT_URL=https://t.me/ZicZordAI20K4Bot
+```
+
+`TELEGRAM_PUBLIC_USER_ID` bật demo công khai với scope của một demo user. Khi
+triển khai thật, để trống biến này và tạo `config/telegram-users.json` từ file
+example để map Telegram ID sang đúng học viên.
+
+Sau khi backend có public HTTPS URL:
+
+```bash
+python3 scripts/setup-telegram-webhook.py \
+  --url https://your-backend.example.com \
+  --env-file .env
+```
 
 Backend dùng OpenRouter pool theo luồng và giữ Groq làm fallback cuối.
 Không đưa key thật vào source code, image Docker hoặc file được commit.
@@ -74,7 +103,8 @@ Deploy frontend:
 cd frontend
 vercel link --yes --project kute-discord-copilot
 vercel --prod --yes \
-  --build-env NEXT_PUBLIC_API_URL=https://your-tunnel.trycloudflare.com
+  --build-env NEXT_PUBLIC_API_URL=https://your-tunnel.trycloudflare.com \
+  --build-env NEXT_PUBLIC_TELEGRAM_BOT_URL=https://t.me/ZicZordAI20K4Bot
 ```
 
 Quick Tunnel không có uptime guarantee và URL thay đổi khi process restart.

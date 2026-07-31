@@ -145,6 +145,8 @@ CREATE TABLE IF NOT EXISTS chat_interactions (
     profile_id TEXT REFERENCES learner_profiles(profile_id) ON DELETE SET NULL,
     demo_user_id TEXT NOT NULL,
     channel_id TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'web',
+    external_user_id TEXT,
     question TEXT NOT NULL,
     answer TEXT NOT NULL,
     provider TEXT NOT NULL,
@@ -153,8 +155,15 @@ CREATE TABLE IF NOT EXISTS chat_interactions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE chat_interactions
+    ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'web';
+ALTER TABLE chat_interactions
+    ADD COLUMN IF NOT EXISTS external_user_id TEXT;
+
 CREATE INDEX IF NOT EXISTS chat_interactions_profile_time_idx
     ON chat_interactions (profile_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS chat_interactions_source_time_idx
+    ON chat_interactions (source, created_at DESC);
 
 """
 
@@ -298,9 +307,11 @@ class Database:
         self,
         *,
         interaction_id: str,
-        profile_id: str,
+        profile_id: str | None,
         demo_user_id: str,
         channel_id: str,
+        source: str = "web",
+        external_user_id: str | None = None,
         question: str,
         answer: str,
         provider: str,
@@ -318,15 +329,18 @@ class Database:
                     """
                     INSERT INTO chat_interactions (
                         interaction_id, profile_id, demo_user_id, channel_id,
-                        question, answer, provider, citations, tool_calls
+                        source, external_user_id, question, answer, provider,
+                        citations, tool_calls
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         interaction_id,
                         profile_id,
                         demo_user_id,
                         channel_id,
+                        source,
+                        external_user_id,
                         question,
                         answer,
                         provider,
