@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 import hmac
+import json
 from typing import Literal
 from urllib.parse import quote
 from uuid import uuid4
 
 import httpx
 from fastapi import (
+    BackgroundTasks,
     Depends,
     FastAPI,
     Header,
@@ -24,6 +26,7 @@ from .catchup_service import CatchupService
 from .config import settings
 from .context_tools import ContextToolService
 from .database import Database
+from .evaluation_service import EvaluationService
 from .hindsight_gateway import HindsightGateway
 from .llm_gateway import LLMGateway
 from .rag_anything_gateway import RAGAnythingGateway
@@ -49,12 +52,16 @@ from .schemas import (
     DiscordState,
     HealthResponse,
     IngestionStatus,
+    LearnerProfile,
+    LearnerProfileCreate,
     Memory,
     MemoryUpdate,
     RAGQueryRequest,
     RAGQueryResponse,
     RAGSource,
     RAGSourceRecord,
+    TelegramUpdate,
+    TelegramWebhookAck,
 )
 from .scopes import (
     allowed_scope_keys,
@@ -66,6 +73,8 @@ from .scopes import (
 )
 from .seed import USERS
 from .store import JsonStore
+from .telegram_gateway import TelegramGateway
+from .telegram_service import TelegramService
 
 
 store = JsonStore(settings.state_path)
@@ -76,7 +85,16 @@ database = Database(settings)
 rag = RAGAnythingGateway(settings)
 context_tools = ContextToolService(database)
 chat_service = ChatService(store, hindsight, llm, rag, context_tools)
-catchup_service = CatchupService(store)
+catchup_service = CatchupService(store, llm)
+evaluation = EvaluationService(settings, chat_service)
+telegram_gateway = TelegramGateway(settings)
+telegram_service = TelegramService(
+    settings,
+    store,
+    chat_service,
+    telegram_gateway,
+    database,
+)
 
 
 @asynccontextmanager
@@ -164,12 +182,44 @@ async def health() -> HealthResponse:
         database_learning_contexts=database_status.learning_contexts,
         rag_reachable=rag_status["reachable"],
         rag_indexed_scopes=rag_status["indexed_scopes"],
+        telegram_configured=telegram_service.configured,
     )
 
 
 @app.get("/api/users", response_model=list[CommunityUser])
 def list_users() -> list[CommunityUser]:
     return [CommunityUser.model_validate(user) for user in USERS]
+
+
+@app.get("/api/learner-profiles/{profile_id}", response_model=LearnerProfile)
+async def get_learner_profile(profile_id: str) -> LearnerProfile:
+    profile = await database.get_learner_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ học viên.")
+    return LearnerProfile.model_validate(profile)
+
+
+@app.post("/api/learner-profiles", response_model=LearnerProfile)
+async def create_learner_profile(
+    payload: LearnerProfileCreate,
+) -> LearnerProfile:
+    get_user(payload.demo_user_id)
+    full_name = " ".join(payload.full_name.split())
+    if len(full_name) < 2:
+        raise HTTPException(status_code=422, detail="Họ tên chưa hợp lệ.")
+    try:
+        profile = await database.upsert_learner_profile(
+            profile_id=f"profile-{uuid4().hex}",
+            full_name=full_name,
+            student_id_last5=payload.student_id_last5,
+            demo_user_id=payload.demo_user_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Chưa kết nối được database hồ sơ.",
+        ) from exc
+    return LearnerProfile.model_validate(profile)
 
 
 @app.get("/api/discord-state", response_model=DiscordState)
@@ -226,10 +276,59 @@ def demo_state_alias(user_id: str = Query(default="U01862")) -> DiscordState:
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest) -> ChatResponse:
     user = get_user(payload.user_id)
+    if payload.profile_id and database.configured:
+        profile = await database.get_learner_profile(payload.profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Hồ sơ học viên không còn tồn tại.")
     channel = channel_record(payload.channel_id)
     if channel and not can_access_channel(user, channel):
         raise HTTPException(status_code=403, detail="Bạn không có quyền dùng channel này.")
-    return await chat_service.chat(user, payload.message, payload.channel_id)
+    response = await chat_service.chat(user, payload.message, payload.channel_id)
+    if payload.profile_id:
+        await database.log_chat_interaction(
+            interaction_id=f"chat-{uuid4().hex}",
+            profile_id=payload.profile_id,
+            demo_user_id=user.id,
+            channel_id=payload.channel_id,
+            source="web",
+            question=payload.message,
+            answer=response.message.content,
+            provider=response.provider,
+            citations=[
+                citation.model_dump(mode="json")
+                for citation in response.message.citations
+            ],
+            tool_calls=[
+                tool_call.model_dump(mode="json")
+                for tool_call in response.tool_calls
+            ],
+        )
+    return response
+
+
+@app.post(
+    "/api/connectors/telegram/webhook",
+    response_model=TelegramWebhookAck,
+)
+async def telegram_webhook(
+    payload: TelegramUpdate,
+    background_tasks: BackgroundTasks,
+    webhook_secret: str | None = Header(
+        default=None,
+        alias="X-Telegram-Bot-Api-Secret-Token",
+    ),
+) -> TelegramWebhookAck:
+    if not telegram_service.configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Connector Telegram chưa được cấu hình.",
+        )
+    if not telegram_service.verify_webhook_secret(webhook_secret):
+        raise HTTPException(status_code=403, detail="Telegram webhook secret sai.")
+    if not telegram_service.claim_update(payload.update_id):
+        return TelegramWebhookAck(accepted=False, reason="duplicate")
+    background_tasks.add_task(telegram_service.process_update, payload)
+    return TelegramWebhookAck(accepted=True, reason="accepted")
 
 
 @app.post("/api/rag/query", response_model=RAGQueryResponse)
@@ -314,6 +413,41 @@ async def admin_overview(
         rag_indexed_scopes=rag_status["indexed_scopes"],
         admin_auth_required=bool(settings.admin_api_key),
     )
+
+
+@app.get("/api/admin/evaluation")
+def admin_evaluation(
+    _: None = Depends(require_admin),
+) -> dict:
+    try:
+        return evaluation.overview()
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/evaluation/run", status_code=status.HTTP_202_ACCEPTED)
+async def admin_run_evaluation(
+    save_as_baseline: bool = Query(default=False),
+    _: None = Depends(require_admin),
+) -> dict:
+    try:
+        evaluation.load_suite()
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return evaluation.start(save_as_baseline=save_as_baseline)
+
+
+@app.post("/api/admin/evaluation/cases/{case_id}/run")
+async def admin_run_evaluation_case(
+    case_id: str,
+    _: None = Depends(require_admin),
+) -> dict:
+    try:
+        return await evaluation.execute_case_by_id(case_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy eval case.") from exc
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/api/admin/context", response_model=AdminContextList)
@@ -549,9 +683,9 @@ async def admin_delete_memory(
 
 
 @app.post("/api/catch-up", response_model=CatchupBrief)
-def create_catchup(payload: CatchupRequest) -> CatchupBrief:
+async def create_catchup(payload: CatchupRequest) -> CatchupBrief:
     user = get_user(payload.user_id)
-    return catchup_service.generate(user, payload.window_hours)
+    return await catchup_service.generate(user, payload.window_hours)
 
 
 @app.post(

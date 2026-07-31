@@ -1,8 +1,17 @@
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 os.environ["MEMORY_PROVIDER"] = "local"
 os.environ["STATE_PATH"] = str(Path("/tmp") / "kute-discord-test.json")
+for credential_name in (
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_API_KEY_PHUC",
+    "OPENROUTER_API_KEY_KHANG",
+    "OPENROUTER_API_KEY_TRINH",
+    "GROQ_API_KEY",
+):
+    os.environ[credential_name] = ""
 
 from fastapi.testclient import TestClient
 
@@ -58,6 +67,129 @@ def test_health_and_discord_state_expose_hierarchy():
         ("cohort", "K4"),
     }
     assert "team-t009" not in {channel["id"] for channel in payload["channels"]}
+
+
+def test_learner_profile_is_reused_by_student_id_last5(monkeypatch):
+    saved_profiles = {}
+
+    async def fake_upsert_learner_profile(**values):
+        existing = next(
+            (
+                profile
+                for profile in saved_profiles.values()
+                if profile["student_id_last5"] == values["student_id_last5"]
+            ),
+            None,
+        )
+        timestamp = datetime.now(UTC)
+        if existing:
+            existing.update(
+                full_name=values["full_name"],
+                demo_user_id=values["demo_user_id"],
+                updated_at=timestamp,
+                last_seen_at=timestamp,
+            )
+            return existing
+        profile = {
+            **values,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "last_seen_at": timestamp,
+        }
+        saved_profiles[profile["profile_id"]] = profile
+        return profile
+
+    async def fake_get_learner_profile(profile_id):
+        return saved_profiles.get(profile_id)
+
+    monkeypatch.setattr(database, "upsert_learner_profile", fake_upsert_learner_profile)
+    monkeypatch.setattr(database, "get_learner_profile", fake_get_learner_profile)
+
+    first = client.post(
+        "/api/learner-profiles",
+        json={
+            "full_name": "  Nguyễn   Văn An  ",
+            "student_id_last5": "01862",
+            "demo_user_id": "U01862",
+        },
+    )
+    repeated = client.post(
+        "/api/learner-profiles",
+        json={
+            "full_name": "Nguyễn Văn An",
+            "student_id_last5": "01862",
+            "demo_user_id": "U01862",
+        },
+    )
+
+    assert first.status_code == 200
+    assert repeated.status_code == 200
+    assert repeated.json()["profile_id"] == first.json()["profile_id"]
+    assert first.json()["full_name"] == "Nguyễn Văn An"
+
+    restored = client.get(
+        f"/api/learner-profiles/{first.json()['profile_id']}"
+    )
+    assert restored.status_code == 200
+    assert restored.json()["student_id_last5"] == "01862"
+
+
+def test_learner_profile_requires_exactly_five_digits():
+    response = client.post(
+        "/api/learner-profiles",
+        json={
+            "full_name": "Nguyễn Văn An",
+            "student_id_last5": "1862",
+            "demo_user_id": "U01862",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_profiled_chat_is_logged_without_blocking_the_answer(monkeypatch):
+    captured = {}
+
+    async def fake_get_learner_profile(profile_id):
+        assert profile_id == "profile-test"
+        return {"profile_id": profile_id}
+
+    async def fake_log_chat_interaction(**values):
+        captured.update(values)
+        return True
+
+    monkeypatch.setattr(database, "get_learner_profile", fake_get_learner_profile)
+    monkeypatch.setattr(database, "log_chat_interaction", fake_log_chat_interaction)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "user_id": "U01862",
+            "profile_id": "profile-test",
+            "message": "Team mình còn blocker nào?",
+            "channel_id": "bot-commands",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["profile_id"] == "profile-test"
+    assert captured["question"] == "Team mình còn blocker nào?"
+    assert captured["answer"] == response.json()["message"]["content"]
+    assert isinstance(captured["citations"], list)
+    assert isinstance(captured["tool_calls"], list)
+
+
+def test_admin_evaluation_exposes_submission_evidence():
+    response = client.get("/api/admin/evaluation")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_cases"] >= 20
+    assert payload["observed_cases"] >= 10
+    assert len(payload["risk_coverage"]) == 4
+    assert all(item["count"] >= 2 for item in payload["risk_coverage"])
+    assert payload["acceptance_threshold"]["locked"] is True
+    assert payload["decision_statement"].startswith("AI đọc các kênh Discord")
+    assert payload["model"] == "qwen/qwen3.6-27b"
 
 
 def test_team_memory_and_messages_are_isolated():

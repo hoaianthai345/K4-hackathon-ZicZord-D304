@@ -1,4 +1,4 @@
-# Nhóm ZicZord · Zone [X] · Lớp D304 · Khoá 4 — Kute, Discord Action-Item Copilot
+# Nhóm ZicZord · Zone [X] · Lớp D304 · Khoá 4 - ZicZord Discord Action-Item Copilot
 
 Hướng: **B — Trợ lý Học viên (Discord)** · Loại: **Tính năng mới**
 Trạng thái: pivot 31/07/2026 sau 5 interview — xem [spec.md §9 Changelog](spec.md).

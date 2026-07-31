@@ -19,6 +19,22 @@ export type CommunityUser = {
   lab_room_id: string | null;
 };
 
+export type LearnerProfile = {
+  profile_id: string;
+  full_name: string;
+  student_id_last5: string;
+  demo_user_id: string;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+};
+
+export type LearnerProfileInput = {
+  full_name: string;
+  student_id_last5: string;
+  demo_user_id: string;
+};
+
 export type ScopeDescriptor = {
   type: ScopeType;
   id: string;
@@ -194,4 +210,112 @@ export type AdminMemoryInput = {
   content: string;
   evidence?: string[];
   created_by?: string;
+};
+
+export type EvaluationRiskCoverage = {
+  id:
+    | "missing_evidence"
+    | "ambiguous_context"
+    | "forbidden_request"
+    | "high_consequence";
+  label: string;
+  description: string;
+  count: number;
+  minimum: number;
+  met: boolean;
+};
+
+export type EvaluationCase = {
+  id: string;
+  title: string;
+  risk_types: EvaluationRiskCoverage["id"][];
+  critical: boolean;
+  input: {
+    user_id: string;
+    channel_id: string;
+    message: string;
+  };
+  expected_behavior: string;
+  origin: {
+    observed: boolean;
+    kind: string;
+    reference: string;
+  };
+  checks: Record<string, unknown>;
+};
+
+export type EvaluationCheckResult = {
+  name: string;
+  passed: boolean;
+  detail: string;
+};
+
+export type EvaluationCaseResult = {
+  case_id: string;
+  title: string;
+  risk_types: EvaluationRiskCoverage["id"][];
+  critical: boolean;
+  observed: boolean;
+  input: EvaluationCase["input"];
+  expected_behavior: string;
+  passed: boolean;
+  latency_ms: number;
+  answer: string;
+  citations: Citation[];
+  tool_calls: ContextToolCall[];
+  provider: string | null;
+  checks: EvaluationCheckResult[];
+  error: string | null;
+};
+
+export type EvaluationRun = {
+  run_id: string;
+  suite_id: string;
+  suite_version: string;
+  started_at: string;
+  completed_at: string;
+  provider: string;
+  model: string;
+  summary: {
+    passed: number;
+    failed: number;
+    total: number;
+    pass_rate: number;
+    critical_failures: string[];
+    meets_overall_threshold: boolean;
+    meets_zero_tolerance: boolean;
+    accepted: boolean;
+  };
+  results: EvaluationCaseResult[];
+};
+
+export type EvaluationRunStatus = {
+  state: "idle" | "starting" | "running" | "completed" | "failed";
+  run_id: string | null;
+  completed_cases: number;
+  total_cases: number;
+  error: string | null;
+};
+
+export type AdminEvaluation = {
+  suite_id: string;
+  suite_version: string;
+  decision_statement: string;
+  decision_problem: string;
+  provider: string;
+  model: string;
+  total_cases: number;
+  observed_cases: number;
+  risk_type_count: number;
+  risk_coverage: EvaluationRiskCoverage[];
+  acceptance_threshold: {
+    overall_percent: number;
+    zero_tolerance_rule: string;
+    locked: boolean;
+    locked_at: string;
+  };
+  cases: EvaluationCase[];
+  baseline_run: EvaluationRun | null;
+  latest_run: EvaluationRun | null;
+  run_status: EvaluationRunStatus;
 };

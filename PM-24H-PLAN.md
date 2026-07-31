@@ -1,4 +1,4 @@
-# Kế hoạch điều hành hackathon 24 giờ: Kute Memory
+# Kế hoạch điều hành hackathon 24 giờ: ZicZord
 
 Product wedge: **AI trợ lý trong Discord nhớ đúng phạm vi**
 Mục tiêu pitch: chứng minh học viên tự lấy lại context mà không phải tag moderator.

@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import re
 
+from .llm_gateway import LLMGateway
 from .schemas import (
     CatchupBrief,
     CatchupItem,
@@ -45,8 +46,9 @@ def _key(*values: str) -> str:
 
 
 class CatchupService:
-    def __init__(self, store: JsonStore):
+    def __init__(self, store: JsonStore, llm: LLMGateway | None = None):
         self.store = store
+        self.llm = llm
 
     @staticmethod
     def _citation(message: DiscordMessage) -> Citation:
@@ -112,36 +114,67 @@ class CatchupService:
         cleaned = content.strip().rstrip(".")
         return cleaned[:116] + ("…" if len(cleaned) > 116 else "")
 
-    def generate(self, user: CommunityUser, window_hours: int = 24) -> CatchupBrief:
+    async def generate(
+        self,
+        user: CommunityUser,
+        window_hours: int = 24,
+    ) -> CatchupBrief:
         messages = self._visible_messages(user, window_hours)
         items: list[CatchupItem] = []
         seen: set[tuple[str, str]] = set()
         limits = {"decision": 2, "task": 3, "blocker": 2, "announcement": 2}
         counts: dict[str, int] = {key: 0 for key in limits}
-
-        for message in messages:
-            kind = self._kind(message)
-            if not kind or counts[kind] >= limits[kind]:
-                continue
-            normalized = re.sub(r"\s+", " ", message.content.casefold()).strip()
-            dedupe_key = (kind, normalized)
-            if dedupe_key in seen:
-                continue
-            seen.add(dedupe_key)
-            counts[kind] += 1
-            status = "resolved" if RESOLVED_RE.search(message.content) else "open"
-            items.append(
-                CatchupItem(
-                    id=f"brief-item-{_key(user.id, message.id, kind)}",
-                    kind=kind,
-                    title=self._title(message.content),
-                    detail=message.content,
-                    owner=self._owner(message.content, message.author_name),
-                    deadline=self._deadline(message.content),
-                    status=status,
-                    citations=[self._citation(message)],
+        ai_items = (
+            await self.llm.build_daily_brief(user, messages, window_hours)
+            if self.llm
+            else None
+        )
+        if ai_items is not None:
+            message_by_id = {message.id: message for message in messages}
+            for selected in ai_items:
+                message = message_by_id.get(selected["message_id"])
+                if not message:
+                    continue
+                kind = selected["kind"]
+                counts[kind] += 1
+                items.append(
+                    CatchupItem(
+                        id=f"brief-item-{_key(user.id, message.id, kind)}",
+                        kind=kind,
+                        title=selected["title"],
+                        detail=message.content,
+                        owner=selected["owner"],
+                        deadline=selected["deadline"],
+                        status=selected["status"],
+                        citations=[self._citation(message)],
+                    )
                 )
-            )
+            provider = self.llm.status().name
+        else:
+            for message in messages:
+                kind = self._kind(message)
+                if not kind or counts[kind] >= limits[kind]:
+                    continue
+                normalized = re.sub(r"\s+", " ", message.content.casefold()).strip()
+                dedupe_key = (kind, normalized)
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+                counts[kind] += 1
+                status = "resolved" if RESOLVED_RE.search(message.content) else "open"
+                items.append(
+                    CatchupItem(
+                        id=f"brief-item-{_key(user.id, message.id, kind)}",
+                        kind=kind,
+                        title=self._title(message.content),
+                        detail=message.content,
+                        owner=self._owner(message.content, message.author_name),
+                        deadline=self._deadline(message.content),
+                        status=status,
+                        citations=[self._citation(message)],
+                    )
+                )
+            provider = "deterministic-fallback"
 
         order = {"decision": 0, "task": 1, "blocker": 2, "announcement": 3}
         items.sort(key=lambda item: (order[item.kind], item.status == "resolved"))
@@ -165,6 +198,7 @@ class CatchupService:
             summary=" · ".join(summary_parts),
             items=items,
             acknowledged=acknowledged,
+            provider=provider,
         )
 
         def operation(state: dict):

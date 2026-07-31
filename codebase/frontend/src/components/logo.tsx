@@ -5,14 +5,14 @@ export function Logo({ compact = false }: { compact?: boolean }) {
     <Link
       href="/"
       className="group inline-flex items-center gap-2.5 font-semibold tracking-tight"
-      aria-label="Kute, về trang chủ"
+      aria-label="ZicZord, về trang chủ"
     >
       <span className="logo-mark" aria-hidden="true">
-        K
+        Z
       </span>
       {!compact && (
         <span className="text-[15px] font-bold">
-          Kute<span className="text-muted">.memory</span>
+          Zic<span className="text-accent-strong">Zord</span>
         </span>
       )}
     </Link>

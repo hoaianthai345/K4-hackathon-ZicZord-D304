@@ -1,0 +1,9 @@
+{
+  "users": [
+    {
+      "telegram_user_id": "123456789",
+      "internal_user_id": "U01862",
+      "enabled": false
+    }
+  ]
+}

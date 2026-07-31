@@ -17,9 +17,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Kute Memory | Discord Learning Copilot",
+  title: "ZicZord | Discord Catch-up Copilot",
   description:
-    "Trợ lý Discord đọc đúng channel và gọi lại memory theo user, team, group, phòng học và cộng đồng.",
+    "Trợ lý AI của Team ZicZord biến hội thoại Discord thành daily brief có nguồn kiểm chứng.",
 };
 
 export default function RootLayout({

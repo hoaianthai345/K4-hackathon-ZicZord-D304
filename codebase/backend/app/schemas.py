@@ -122,6 +122,23 @@ class ChatRequest(BaseModel):
     user_id: str
     message: str = Field(min_length=1, max_length=1200)
     channel_id: str = "bot-commands"
+    profile_id: str | None = Field(default=None, max_length=80)
+
+
+class LearnerProfileCreate(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+    student_id_last5: str = Field(pattern=r"^\d{5}$")
+    demo_user_id: str = "U01862"
+
+
+class LearnerProfile(BaseModel):
+    profile_id: str
+    full_name: str
+    student_id_last5: str
+    demo_user_id: str
+    created_at: datetime
+    updated_at: datetime
+    last_seen_at: datetime
 
 
 class ContextToolCall(BaseModel):
@@ -136,6 +153,39 @@ class ChatResponse(BaseModel):
     candidate: MemoryCandidate | None = None
     provider: str
     tool_calls: list[ContextToolCall] = Field(default_factory=list)
+
+
+class TelegramUser(BaseModel):
+    id: int
+    is_bot: bool = False
+    first_name: str
+    last_name: str | None = None
+    username: str | None = None
+
+
+class TelegramChat(BaseModel):
+    id: int
+    type: Literal["private", "group", "supergroup", "channel"]
+    title: str | None = None
+    username: str | None = None
+
+
+class TelegramMessage(BaseModel):
+    message_id: int
+    from_user: TelegramUser | None = Field(default=None, alias="from")
+    chat: TelegramChat
+    text: str | None = None
+
+
+class TelegramUpdate(BaseModel):
+    update_id: int
+    message: TelegramMessage | None = None
+
+
+class TelegramWebhookAck(BaseModel):
+    ok: Literal[True] = True
+    accepted: bool
+    reason: Literal["accepted", "duplicate"]
 
 
 class CatchupItem(BaseModel):
@@ -159,6 +209,7 @@ class CatchupBrief(BaseModel):
     summary: str
     items: list[CatchupItem]
     acknowledged: bool = False
+    provider: str = "deterministic-fallback"
 
 
 class CatchupRequest(BaseModel):
@@ -215,6 +266,7 @@ class HealthResponse(BaseModel):
     database_learning_contexts: int = 0
     rag_reachable: bool | None = None
     rag_indexed_scopes: list[str] = Field(default_factory=list)
+    telegram_configured: bool = False
 
 
 class RAGQueryRequest(BaseModel):

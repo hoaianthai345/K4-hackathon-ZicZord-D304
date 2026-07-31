@@ -443,7 +443,7 @@ def initial_state() -> dict:
                 {
                     "id": "seed-assistant-an",
                     "role": "assistant",
-                    "author_name": "Trợ lý Kute",
+                    "author_name": "Trợ lý ZicZord",
                     "content": (
                         "Chào An. Khi quay lại sau một ngày, bấm “Bắt kịp 24 giờ qua” để xem "
                         "quyết định, việc cần làm, deadline và blocker từ đúng các kênh bạn được phép đọc."

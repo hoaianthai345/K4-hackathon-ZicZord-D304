@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkle,
   Stack,
+  TelegramLogo,
   User,
   Users,
   UsersThree,
@@ -23,7 +24,9 @@ import { useEffect, useState } from "react";
 import { ChatShell } from "./chat-shell";
 import { SiteNav } from "./site-nav";
 
-const sections = ["home", "problem", "model", "scope", "demo", "trust", "next"];
+const sections = ["home", "problem", "model", "scope", "demo", "telegram", "trust", "next"];
+const telegramBotUrl =
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL ?? "https://t.me/ZicZordAI20K4Bot";
 
 function Reveal({
   children,
@@ -112,7 +115,9 @@ export function PitchDeck() {
                 <DiscordLogo size={15} weight="fill" />
                 Discord Learning Copilot
               </span>
-              <span className="text-xs font-semibold text-muted">Hackathon · K4</span>
+              <span className="text-xs font-semibold text-muted">
+                Team ZicZord · Hackathon K4
+              </span>
             </div>
             <h1 className="hero-title">
               <span className="block">Discord nhớ đúng.</span>
@@ -153,7 +158,7 @@ export function PitchDeck() {
                 <span />
                 <span />
               </div>
-              <p>Kute Memory · live API</p>
+              <p>ZicZord · live API</p>
               <span className="live-label">
                 <span className="status-dot" />
                 Ready
@@ -183,9 +188,11 @@ export function PitchDeck() {
           <div className="problem-layout">
             <Reveal className="failure-quote">
               <div className="quote-header">
-                <span className="avatar avatar-bot">K</span>
+                <span className="avatar avatar-bot">Z</span>
                 <div>
-                  <p className="font-bold text-accent-strong">Trợ lý Kute <span className="bot-badge">APP</span></p>
+                  <p className="font-bold text-accent-strong">
+                    Trợ lý ZicZord <span className="bot-badge">APP</span>
+                  </p>
                   <p className="text-xs text-muted">trong #💬-chung</p>
                 </div>
               </div>
@@ -387,6 +394,73 @@ export function PitchDeck() {
               Mở demo toàn màn hình
               <ArrowRight size={17} weight="bold" />
             </Link>
+          </Reveal>
+        </div>
+      </section>
+
+      <section id="telegram" className="pitch-section telegram-section">
+        <div className="pitch-container telegram-layout">
+          <Reveal className="telegram-copy">
+            <span className="kicker">
+              <TelegramLogo size={15} weight="fill" />
+              ZicZord on Telegram
+            </span>
+            <h2 className="telegram-title">
+              Context Discord.
+              <span className="text-accent-strong"> Ngay trong Telegram.</span>
+            </h2>
+            <p className="section-copy telegram-description">
+              Hỏi về workshop, deadline hoặc blocker khi đang di chuyển. ZicZord
+              vẫn dùng đúng quyền của học viên và dẫn lại nguồn Discord.
+            </p>
+            <a
+              href={telegramBotUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="button telegram-cta"
+            >
+              <TelegramLogo size={18} weight="fill" />
+              Mở @ZicZordAI20K4Bot
+              <ArrowRight size={17} weight="bold" />
+            </a>
+            <div className="telegram-capabilities" aria-label="Khả năng Telegram">
+              {[
+                "Daily brief 24 giờ",
+                "Context đúng team",
+                "Citation Discord",
+                "Lưu log để cải thiện",
+              ].map((item) => (
+                <span key={item}>
+                  <Check size={13} weight="bold" />
+                  {item}
+                </span>
+              ))}
+            </div>
+          </Reveal>
+
+          <Reveal className="telegram-phone" delay={0.08}>
+            <div className="telegram-phone-head">
+              <span className="telegram-avatar">Z</span>
+              <div>
+                <p>ZicZord</p>
+                <span>bot · online</span>
+              </div>
+              <TelegramLogo size={24} weight="fill" />
+            </div>
+            <div className="telegram-chat-preview">
+              <p className="telegram-bubble telegram-bubble-user">
+                Workshop hôm qua có gì quan trọng?
+              </p>
+              <div className="telegram-bubble telegram-bubble-bot">
+                <strong>Bạn cần biết</strong>
+                <span>Workshop nhắc setup AI Log Hook trước khi submit prompt.</span>
+                <span className="telegram-source">Xem nguồn Discord ↗</span>
+              </div>
+            </div>
+            <div className="telegram-privacy">
+              <ShieldCheck size={16} weight="fill" />
+              Private chat · scope server-side · không đọc chéo team
+            </div>
           </Reveal>
         </div>
       </section>

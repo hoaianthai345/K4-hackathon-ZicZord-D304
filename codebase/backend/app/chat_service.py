@@ -475,6 +475,8 @@ class ChatService:
         user: CommunityUser,
         query: str,
         channel_id: str,
+        *,
+        persist: bool = True,
     ) -> ChatResponse:
         user_message = AssistantMessage(
             id=f"turn-{uuid4().hex[:10]}",
@@ -590,7 +592,7 @@ class ChatService:
         assistant_message = AssistantMessage(
             id=f"turn-{uuid4().hex[:10]}",
             role="assistant",
-            author_name="Trợ lý Kute",
+            author_name="Trợ lý ZicZord",
             content=answer,
             citations=citations,
             memory_used=used_ids,
@@ -610,13 +612,14 @@ class ChatService:
                 state["candidates"].append(candidate.model_dump(mode="json"))
             return True
 
-        self.store.mutate(operation)
-        await self.hindsight.retain_evidence(
-            user_message.id,
-            query,
-            "user",
-            user.id,
-        )
+        if persist:
+            self.store.mutate(operation)
+            await self.hindsight.retain_evidence(
+                user_message.id,
+                query,
+                "user",
+                user.id,
+            )
         return ChatResponse(
             message=assistant_message,
             candidate=candidate,

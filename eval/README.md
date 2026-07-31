@@ -1,44 +1,58 @@
-# eval/ — Golden set + Quality bar cho Kute Memory
+# ZicZord evaluation suite
 
-**Deliverable CP3 + R4 (15đ).**
+Bộ eval kiểm tra một AI decision cụ thể:
 
-## File
+> AI đọc các kênh Discord người dùng được phép xem và quyết định tin nào là
+> decision, task, deadline hoặc blocker để tạo daily brief, dùng
+> `qwen/qwen3.6-27b` qua OpenRouter pool.
 
-| File | Mục đích |
-|---|---|
-| `golden_set.csv` | 22 case, cơ cấu ≥2/lớp chỗ khó + ≥10 từ data thật |
-| `quality-bar.md` | Bar chốt trước 23:59 N1 — copy vào `spec.md §15` |
-| `run_eval.py` | Runner: POST tới endpoint chat + so kết quả với expected |
-| `results/` | Bảng CSV mỗi lượt chạy (được tạo tự động) |
-| `traces/.gitkeep` | Trace log AI call (backend tự ghi khi request tới) |
+## Cam kết trước khi chạy
 
-## Chạy
+- Chuẩn toàn bộ: ít nhất 80% câu đạt.
+- Zero tolerance: không được trả lời sai deadline dù chỉ một lần.
+- Cam kết nằm trong `cases.json` và trường `locked` phải luôn là `true`.
+
+## Cấu trúc
+
+- `cases.json`: 24 case chạy trực tiếp qua backend hiện tại.
+- `results/baseline.json`: kết quả lần chạy đầu tiên, bao gồm cả case fail.
+- `results/latest.json`: lần chạy gần nhất ở local, không commit.
+- `results/runs/`: lịch sử các lần chạy local, không commit.
+- `golden_set.csv`: 22 case rubric CP3/R4 do team xây dựng trước đó.
+- `quality-bar.md`: quality bar gốc đã chốt cho golden set.
+- `traces/`: vị trí lưu trace cục bộ khi cần phân tích sâu.
+
+Hai bộ case đều được giữ lại. `cases.json` là bộ executable chính của release
+v0.4; `golden_set.csv` là bằng chứng nguồn và coverage từ giai đoạn validation.
+
+Mỗi case trong `cases.json` có các trường bắt buộc:
+
+- `input`: user, channel và câu hỏi đưa vào sản phẩm.
+- `expected_behavior`: sản phẩm phải phản hồi thế nào.
+- `risk_types`: một hoặc nhiều nhóm rủi ro.
+- `origin`: nguồn thực tế hay tình huống synthetic.
+- `checks`: các điều kiện deterministic dùng để chấm.
+
+## Chạy lại
+
+Backend Docker phải đang chạy và đã cấu hình `ADMIN_API_KEY`.
 
 ```bash
-# 1. Boot backend
-cd codebase
-docker-compose up -d
-# đợi backend healthy tại http://localhost:8000
-
-# 2. Chạy eval
-cd ../eval
-python run_eval.py --endpoint http://localhost:8000/chat
+python3 eval/run_eval.py
 ```
 
-Output:
-- `eval/results/results-<ts>.csv` — bảng kết quả 22 case
-- Stdout: bảng %, breakdown theo class, đối chiếu quality bar
+Script đọc admin key từ `codebase/.env`, chạy từng case qua admin API với
+`persist=False` và ghi checkpoint sau mỗi câu. Kết quả mới được lưu vào
+`eval/results/latest.json`; chat history và memory thật không bị thay đổi.
 
-## Adapt cho endpoint thực
+Chỉ dùng cờ sau cho lần baseline đầu tiên:
 
-`run_eval.py` mặc định POST body `{"user_id": ..., "question": ...}` và mong đợi
-response `{"class": ..., "citations": [...], "used_scopes": [...], ...}`.
+```bash
+python3 eval/run_eval.py --baseline
+```
 
-Nếu API của nhóm khác, edit function `call_endpoint()` và `parse_response()` ở
-đầu file — 2 chỗ duy nhất cần đổi.
+Không ghi đè `acceptance_threshold` sau khi đã nhìn thấy kết quả.
 
-## Vì sao 22 case (không phải nhiều hơn)
-
-Guide `02-guide.md §2.6` yêu cầu ≥20. 22 case đủ phủ 4 lớp chỗ khó (mỗi lớp ≥3)
-+ ≥10 từ chatlog/transcript thật + case cross-team K02 (case hiểm nhất). Thêm
-case sau khi có feedback CP5 — ghi vào changelog spec §9.
+Baseline đầu tiên hiện đạt **8/24 câu (33,3%)**. Cả bốn case deadline critical
+đều fail, nên baseline chưa đạt zero-tolerance rule. Kết quả thấp được giữ nguyên
+để làm bằng chứng cho các failure path cần sửa.
