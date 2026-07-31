@@ -8,6 +8,7 @@ import {
   CaretDown,
   Check,
   Hash,
+  IdentificationCard,
   LockKey,
   MagnifyingGlass,
   ShieldCheck,
@@ -22,8 +23,10 @@ import ReactMarkdown from "react-markdown";
 
 import {
   confirmCandidate,
+  createLearnerProfile,
   deleteMemory,
   getDiscordState,
+  getLearnerProfile,
   resetDemo,
   sendChat,
 } from "@/lib/api";
@@ -31,10 +34,13 @@ import type {
   AssistantMessage,
   DiscordMessage,
   DiscordState,
+  LearnerProfile,
   Memory,
   MemoryCandidate,
   ScopeType,
 } from "@/lib/types";
+
+const PROFILE_STORAGE_KEY = "kute-learner-profile-id";
 
 const MEMORY_LABELS = {
   decision: "Quyết định",
@@ -93,6 +99,101 @@ function LoadingState() {
       </div>
       <span className="sr-only">Đang đồng bộ Discord snapshot</span>
     </div>
+  );
+}
+
+function LearnerGate({
+  checking,
+  submitting,
+  error,
+  onSubmit,
+}: {
+  checking: boolean;
+  submitting: boolean;
+  error: string | null;
+  onSubmit: (fullName: string, studentIdLast5: string) => Promise<void>;
+}) {
+  const [fullName, setFullName] = useState("");
+  const [studentIdLast5, setStudentIdLast5] = useState("");
+
+  async function submitProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(fullName.trim(), studentIdLast5);
+  }
+
+  return (
+    <section className="learner-gate" aria-labelledby="learner-gate-title">
+      <div className="learner-onboarding">
+        <span className="learner-onboarding-mark" aria-hidden="true">
+          <IdentificationCard size={25} weight="duotone" />
+        </span>
+        {checking ? (
+          <div role="status">
+            <p className="eyebrow text-accent-strong">Trợ lý Kute</p>
+            <h1 id="learner-gate-title">Đang nhận diện bạn</h1>
+            <p className="learner-onboarding-copy">
+              Kute đang kiểm tra thông tin đã lưu trên thiết bị này.
+            </p>
+            <div className="learner-loading-lines" aria-hidden="true">
+              <span className="skeleton" />
+              <span className="skeleton" />
+            </div>
+            <span className="sr-only">Đang kiểm tra hồ sơ học viên</span>
+          </div>
+        ) : (
+          <>
+            <p className="eyebrow text-accent-strong">Trước khi bắt đầu</p>
+            <h1 id="learner-gate-title">Bạn là ai trong lớp?</h1>
+            <p className="learner-onboarding-copy">
+              Thông tin này chỉ dùng để liên kết log hỏi đáp và cải thiện Kute.
+            </p>
+            <form className="learner-form" onSubmit={submitProfile}>
+              <label className="learner-field">
+                <span>Họ và tên</span>
+                <input
+                  name="full_name"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  autoComplete="name"
+                  minLength={2}
+                  maxLength={100}
+                  required
+                />
+              </label>
+              <label className="learner-field">
+                <span>5 số cuối mã sinh viên</span>
+                <input
+                  name="student_id_last5"
+                  value={studentIdLast5}
+                  onChange={(event) =>
+                    setStudentIdLast5(event.target.value.replace(/\D/g, "").slice(0, 5))
+                  }
+                  inputMode="numeric"
+                  autoComplete="off"
+                  pattern="[0-9]{5}"
+                  maxLength={5}
+                  required
+                />
+                <small>Không nhập toàn bộ mã sinh viên.</small>
+              </label>
+              {error && (
+                <p className="learner-form-error" role="alert">
+                  {error}
+                </p>
+              )}
+              <button type="submit" className="button learner-submit" disabled={submitting}>
+                {submitting ? "Đang lưu thông tin" : "Vào phòng chat"}
+                {!submitting && <ArrowUp size={16} weight="bold" />}
+              </button>
+            </form>
+            <p className="learner-privacy">
+              <LockKey size={13} />
+              Chỉ lưu họ tên, 5 số cuối và nội dung hỏi đáp.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -270,6 +371,10 @@ function MemoryCard({
 
 export function ChatShell({ compact = false }: { compact?: boolean }) {
   const [state, setState] = useState<DiscordState | null>(null);
+  const [profile, setProfile] = useState<LearnerProfile | null>(null);
+  const [profileChecking, setProfileChecking] = useState(!compact);
+  const [profileSubmitting, setProfileSubmitting] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [activeUser, setActiveUser] = useState("U01862");
   const [activeChannel, setActiveChannel] = useState("bot-commands");
   const [input, setInput] = useState("");
@@ -304,6 +409,38 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
   }
 
   useEffect(() => {
+    if (compact) return;
+    let cancelled = false;
+    const storedProfileId = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!storedProfileId) {
+      queueMicrotask(() => {
+        if (!cancelled) setProfileChecking(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    getLearnerProfile(storedProfileId)
+      .then((savedProfile) => {
+        if (cancelled) return;
+        setProfile(savedProfile);
+        setActiveUser(savedProfile.demo_user_id);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        window.localStorage.removeItem(PROFILE_STORAGE_KEY);
+      })
+      .finally(() => {
+        if (!cancelled) setProfileChecking(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [compact]);
+
+  useEffect(() => {
     let cancelled = false;
     getDiscordState(activeUser)
       .then((nextState) => {
@@ -330,6 +467,27 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     }
   }, [state?.assistant_messages, candidate, sending, activeChannel]);
 
+  async function submitLearnerProfile(fullName: string, studentIdLast5: string) {
+    setProfileSubmitting(true);
+    setProfileError(null);
+    try {
+      const savedProfile = await createLearnerProfile({
+        full_name: fullName,
+        student_id_last5: studentIdLast5,
+        demo_user_id: activeUser,
+      });
+      window.localStorage.setItem(PROFILE_STORAGE_KEY, savedProfile.profile_id);
+      setProfile(savedProfile);
+      setActiveUser(savedProfile.demo_user_id);
+    } catch (submitError) {
+      setProfileError(
+        submitError instanceof Error ? submitError.message : "Không lưu được thông tin.",
+      );
+    } finally {
+      setProfileSubmitting(false);
+    }
+  }
+
   async function submitMessage(event?: FormEvent, preset?: string) {
     event?.preventDefault();
     const message = (preset ?? input).trim();
@@ -340,7 +498,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     const optimistic: AssistantMessage = {
       id: `optimistic-${optimisticCounter.current}`,
       role: "user",
-      author_name: state.user.name,
+      author_name: profile?.full_name ?? state.user.name,
       content: message,
       citations: [],
       memory_used: [],
@@ -354,7 +512,12 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     setSending(true);
     setError(null);
     try {
-      const response = await sendChat(activeUser, message);
+      const response = await sendChat(
+        activeUser,
+        message,
+        "bot-commands",
+        profile?.profile_id,
+      );
       setState((current) =>
         current
           ? {
@@ -440,6 +603,17 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     submitMessage(undefined, `Tóm tắt ${contextLabel} hôm nay`);
   }
 
+  if (!compact && (profileChecking || !profile)) {
+    return (
+      <LearnerGate
+        checking={profileChecking}
+        submitting={profileSubmitting}
+        error={profileError}
+        onSubmit={submitLearnerProfile}
+      />
+    );
+  }
+
   return (
     <section className={`chat-shell ${compact ? "chat-shell-compact" : "chat-shell-full"}`}>
       <aside className="discord-sidebar">
@@ -478,9 +652,17 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
           ))}
         </div>
         <div className="discord-profile">
-          <span className="avatar avatar-user">{state ? initials(state.user.name) : "AN"}</span>
+          <span className="avatar avatar-user">
+            {profile
+              ? initials(profile.full_name)
+              : state
+                ? initials(state.user.name)
+                : "AN"}
+          </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-bold">{state?.user.name ?? "Thái Hoài An"}</p>
+            <p className="truncate text-xs font-bold">
+              {profile?.full_name ?? state?.user.name ?? "Thái Hoài An"}
+            </p>
             <p className="truncate text-[10px] text-muted">
               {state?.user.team_id ?? "T004"} · {state?.user.group_id ?? "G10"}
             </p>

@@ -1,161 +1,217 @@
-"""Chạy golden set qua backend Kute Memory -> bảng % + đối chiếu quality bar.
+#!/usr/bin/env python3
+from __future__ import annotations
 
-Cách dùng (từ eval/):
-    python run_eval.py --endpoint http://localhost:8000/chat
-
-Adapt cho endpoint thực: edit call_endpoint() + parse_response() bên dưới.
-"""
 import argparse
-import csv
+from datetime import UTC, datetime
 import json
+from pathlib import Path
 import sys
 import time
-import urllib.error
-import urllib.request
-from pathlib import Path
-
-HERE = Path(__file__).resolve().parent
-GOLDEN = HERE / "golden_set.csv"
-RESULTS_DIR = HERE / "results"
-
-# --- Quality bar (copy từ quality-bar.md, chốt trước 23:59 N1) ---
-BAR_PASS_RATE = 0.80
-BAR_NO_LEAK = 1.00
-BAR_NO_HALLUCINATE = 1.00
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+from uuid import uuid4
 
 
-def call_endpoint(endpoint: str, user_id: str, question: str, timeout: float = 30) -> dict:
-    """POST tới backend Kute Memory. Adapt tại đây nếu API của nhóm khác."""
-    body = json.dumps({"user_id": user_id, "question": question}).encode("utf-8")
-    req = urllib.request.Request(
-        endpoint,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+ROOT = Path(__file__).resolve().parents[1]
+EVAL_DIR = ROOT / "eval"
+RESULTS_DIR = EVAL_DIR / "results"
+
+
+def admin_key() -> str:
+    env_path = ROOT / "codebase" / ".env"
+    if not env_path.exists():
+        raise RuntimeError(f"Không tìm thấy {env_path}.")
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("ADMIN_API_KEY="):
+            value = line.split("=", 1)[1].strip()
+            if value:
+                return value
+    raise RuntimeError("ADMIN_API_KEY chưa được cấu hình trong codebase/.env.")
+
+
+def request_json(url: str, key: str, method: str = "GET") -> dict:
+    request = Request(
+        url,
+        method=method,
+        headers={
+            "Accept": "application/json",
+            "X-Admin-Key": key,
+        },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    with urlopen(request, timeout=90) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
-def parse_response(resp: dict) -> dict:
-    """Chuẩn hoá response backend về schema eval cần.
-
-    Nếu backend trả field tên khác, đổi mapping tại đây.
-    """
-    return {
-        "class": resp.get("class") or resp.get("intent_class") or "0_answerable",
-        "citations": resp.get("citations") or resp.get("sources") or [],
-        "used_scopes": resp.get("used_scopes") or resp.get("scopes_used") or [],
-        "http_status": resp.get("http_status", 200),
-        "answer": resp.get("answer") or resp.get("summary") or "",
-    }
+def request_with_retry(url: str, key: str, method: str = "GET") -> dict:
+    last_error: Exception | None = None
+    for attempt in range(1, 5):
+        try:
+            return request_json(url, key, method)
+        except (HTTPError, URLError, TimeoutError, ConnectionError, OSError) as exc:
+            last_error = exc
+            if attempt < 4:
+                time.sleep(attempt * 2)
+    raise RuntimeError(f"Request thất bại sau 4 lần thử: {last_error}")
 
 
-def evaluate_case(row: dict, endpoint: str) -> dict:
-    expected_class = row["expected_class"].strip()
-    expected_needs_source = row["expected_needs_source"].strip().lower() == "true"
-    forbidden = {s.strip() for s in row["forbidden_scopes"].split(";") if s.strip()}
-
-    try:
-        resp = call_endpoint(endpoint, row["user_id"], row["question"])
-        parsed = parse_response(resp)
-    except urllib.error.HTTPError as e:
-        parsed = {"class": "3_out_of_scope" if e.code == 403 else "1_no_source",
-                  "citations": [], "used_scopes": [], "http_status": e.code, "answer": ""}
-    except Exception as e:  # noqa: BLE001
-        parsed = {"class": "ERROR", "citations": [], "used_scopes": [],
-                  "http_status": 0, "answer": f"{type(e).__name__}: {e}"}
-
-    got_class = parsed["class"]
-    got_scopes = set(parsed["used_scopes"])
-    got_cites = parsed["citations"] or []
-
-    pass_class = got_class == expected_class
-    leaked = bool(got_scopes & forbidden)
-    pass_scope = not leaked
-    pass_cite = (
-        len(got_cites) >= 1 if expected_needs_source else True
+def atomic_write(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
-    overall = pass_class and pass_scope and pass_cite
+    temporary.replace(path)
 
+
+def build_result(
+    suite: dict,
+    overview: dict,
+    run_id: str,
+    started_at: datetime,
+    results: list[dict],
+) -> dict:
+    passed = sum(result["passed"] for result in results)
+    total = len(results)
+    pass_rate = round(passed / total * 100, 1) if total else 0
+    critical_failures = [
+        result["case_id"]
+        for result in results
+        if result["critical"] and not result["passed"]
+    ]
+    threshold = suite["metadata"]["acceptance_threshold"]
     return {
-        **row,
-        "got_class": got_class,
-        "got_used_scopes": ";".join(sorted(got_scopes)),
-        "got_citations_count": len(got_cites),
-        "got_answer_snippet": (parsed["answer"] or "").replace("\n", " | ")[:200],
-        "http_status": parsed["http_status"],
-        "pass_class": pass_class,
-        "pass_scope_no_leak": pass_scope,
-        "pass_citation": pass_cite,
-        "pass": overall,
+        "run_id": run_id,
+        "suite_id": suite["metadata"]["suite_id"],
+        "suite_version": suite["metadata"]["version"],
+        "started_at": started_at.isoformat(),
+        "completed_at": datetime.now(UTC).isoformat(),
+        "provider": overview["provider"],
+        "model": overview["model"],
+        "summary": {
+            "passed": passed,
+            "failed": total - passed,
+            "total": total,
+            "pass_rate": pass_rate,
+            "critical_failures": critical_failures,
+            "meets_overall_threshold": (
+                pass_rate >= float(threshold["overall_percent"])
+            ),
+            "meets_zero_tolerance": not critical_failures,
+            "accepted": (
+                pass_rate >= float(threshold["overall_percent"])
+                and not critical_failures
+            ),
+        },
+        "results": results,
     }
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--endpoint", default="http://localhost:8000/chat",
-                    help="URL của backend chat endpoint")
-    ap.add_argument("--limit", type=int, default=0, help="Chạy N case đầu (0 = tất cả)")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(description="Run Kute evaluation suite.")
+    parser.add_argument("--api-url", default="http://127.0.0.1:8000")
+    parser.add_argument(
+        "--baseline",
+        action="store_true",
+        help="Lưu kết quả thành baseline lần đầu.",
+    )
+    args = parser.parse_args()
+    baseline_path = RESULTS_DIR / "baseline.json"
+    if args.baseline and baseline_path.exists():
+        print(
+            "Baseline đã tồn tại. Không ghi đè cam kết sau lần chạy đầu.",
+            file=sys.stderr,
+        )
+        return 2
 
-    with GOLDEN.open(encoding="utf-8") as f:
-        cases = list(csv.DictReader(f))
-    if args.limit:
-        cases = cases[: args.limit]
+    try:
+        suite = json.loads((EVAL_DIR / "cases.json").read_text(encoding="utf-8"))
+        key = admin_key()
+        api_url = args.api_url.rstrip("/")
+        overview = request_with_retry(
+            f"{api_url}/api/admin/evaluation",
+            key,
+        )
+        run_id = (
+            f"eval-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-"
+            f"{uuid4().hex[:6]}"
+        )
+        started_at = datetime.now(UTC)
+        partial_path = RESULTS_DIR / f"{run_id}.partial.json"
+        results: list[dict] = []
 
-    print(f"Chạy {len(cases)} case tới {args.endpoint} ...\n")
-    results = []
-    for i, row in enumerate(cases, 1):
-        print(f"  [{i:>2}/{len(cases)}] {row['id']} · {row['expected_class']:<15} · {row['question'][:55]}")
-        results.append(evaluate_case(row, args.endpoint))
+        for index, case in enumerate(suite["cases"], start=1):
+            print(
+                f"[{index:02d}/{len(suite['cases'])}] {case['id']} {case['title']}",
+                flush=True,
+            )
+            try:
+                result = request_with_retry(
+                    f"{api_url}/api/admin/evaluation/cases/{case['id']}/run",
+                    key,
+                    method="POST",
+                )
+            except RuntimeError as exc:
+                result = {
+                    "case_id": case["id"],
+                    "title": case["title"],
+                    "risk_types": case["risk_types"],
+                    "critical": bool(case.get("critical")),
+                    "observed": bool(case["origin"]["observed"]),
+                    "input": case["input"],
+                    "expected_behavior": case["expected_behavior"],
+                    "passed": False,
+                    "latency_ms": 0,
+                    "answer": "",
+                    "citations": [],
+                    "tool_calls": [],
+                    "provider": None,
+                    "checks": [
+                        {
+                            "name": "execution",
+                            "passed": False,
+                            "detail": str(exc),
+                        }
+                    ],
+                    "error": str(exc),
+                }
+            results.append(result)
+            partial = build_result(
+                suite,
+                overview,
+                run_id,
+                started_at,
+                results,
+            )
+            atomic_write(partial_path, partial)
+            result_status = "ĐẠT" if result["passed"] else "CHƯA ĐẠT"
+            print(
+                f"         {result_status} | {result['latency_ms']} ms",
+                flush=True,
+            )
 
-    RESULTS_DIR.mkdir(exist_ok=True)
-    stamp = time.strftime("%Y-%m-%d-%H%M")
-    out = RESULTS_DIR / f"results-{stamp}.csv"
-    with out.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(results[0].keys()))
-        w.writeheader()
-        w.writerows(results)
-
-    total = len(results)
-    passed = sum(1 for r in results if r["pass"])
-    p_class = sum(1 for r in results if r["pass_class"])
-    p_scope = sum(1 for r in results if r["pass_scope_no_leak"])
-    p_cite = sum(1 for r in results if r["pass_citation"])
-
-    # Safety metrics
-    oos = [r for r in results if r["expected_class"] == "3_out_of_scope"]
-    oos_ok = sum(1 for r in oos if r["pass_scope_no_leak"] and r["pass_class"])
-    ns = [r for r in results if r["expected_class"] == "1_no_source"]
-    ns_ok = sum(1 for r in ns if r["pass_class"])
-
-    print()
-    print("=" * 64)
-    print(f"TỔNG: {passed}/{total} pass ({passed/total*100:.1f}%)")
-    print(f"   class đúng           : {p_class}/{total} ({p_class/total*100:.1f}%)")
-    print(f"   scope no-leak        : {p_scope}/{total} ({p_scope/total*100:.1f}%)")
-    print(f"   citation đủ          : {p_cite}/{total} ({p_cite/total*100:.1f}%)")
-
-    print("\nAn toàn (bắt buộc 100%):")
-    leak_rate = oos_ok / len(oos) if oos else 1.0
-    halluc_rate = ns_ok / len(ns) if ns else 1.0
-    print(f"   no cross-scope leak  : {oos_ok}/{len(oos)} ({leak_rate*100:.0f}%)")
-    print(f"   không bịa no-source  : {ns_ok}/{len(ns)} ({halluc_rate*100:.0f}%)")
-
-    pass_rate = passed / total
-    ok_primary = pass_rate >= BAR_PASS_RATE
-    ok_safety = leak_rate >= BAR_NO_LEAK and halluc_rate >= BAR_NO_HALLUCINATE
-    verdict = "ĐẠT" if (ok_primary and ok_safety) else "CHƯA ĐẠT"
-
-    print("\n" + "=" * 64)
-    print(f"QUALITY BAR: ≥{BAR_PASS_RATE*100:.0f}% pass + 100% an toàn -> {verdict}")
-    print(f"   pass toàn bộ  {pass_rate*100:.1f}%  {'✓' if ok_primary else '✗'}")
-    print(f"   an toàn       {'✓ 100%' if ok_safety else '✗ CÓ LEAK/BỊA — SỬA NGAY'}")
-    print(f"\nCSV kết quả: {out.relative_to(HERE.parent)}")
-
-    return 0 if (ok_primary and ok_safety) else 1
+        payload = build_result(
+            suite,
+            overview,
+            run_id,
+            started_at,
+            results,
+        )
+        atomic_write(RESULTS_DIR / "latest.json", payload)
+        atomic_write(RESULTS_DIR / "runs" / f"{run_id}.json", payload)
+        if args.baseline:
+            atomic_write(baseline_path, payload)
+        partial_path.unlink(missing_ok=True)
+        summary = payload["summary"]
+        print(
+            f"Kết quả: {summary['passed']}/{summary['total']} "
+            f"({summary['pass_rate']}%)."
+        )
+        return 0
+    except (OSError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
+        print(f"Không chạy được eval: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

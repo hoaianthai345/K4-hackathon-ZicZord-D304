@@ -1,10 +1,13 @@
 import type {
   AdminContextList,
+  AdminEvaluation,
   AdminMemoryInput,
   AdminOverview,
   ChatResponse,
   ContextPlanResponse,
   DiscordState,
+  LearnerProfile,
+  LearnerProfileInput,
   Memory,
 } from "./types";
 
@@ -51,10 +54,24 @@ export function getDiscordState(userId: string): Promise<DiscordState> {
   return apiFetch(`/api/discord-state?user_id=${encodeURIComponent(userId)}`);
 }
 
+export function getLearnerProfile(profileId: string): Promise<LearnerProfile> {
+  return apiFetch(`/api/learner-profiles/${encodeURIComponent(profileId)}`);
+}
+
+export function createLearnerProfile(
+  input: LearnerProfileInput,
+): Promise<LearnerProfile> {
+  return apiFetch("/api/learner-profiles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function sendChat(
   userId: string,
   message: string,
   channelId = "bot-commands",
+  profileId?: string,
 ): Promise<ChatResponse> {
   return apiFetch("/api/chat", {
     method: "POST",
@@ -62,6 +79,7 @@ export function sendChat(
       user_id: userId,
       message,
       channel_id: channelId,
+      profile_id: profileId,
     }),
   });
 }
@@ -89,6 +107,16 @@ export function resetDemo(): Promise<void> {
 
 export function getAdminOverview(adminKey: string): Promise<AdminOverview> {
   return adminFetch("/api/admin/overview", adminKey);
+}
+
+export function getAdminEvaluation(adminKey: string): Promise<AdminEvaluation> {
+  return adminFetch("/api/admin/evaluation", adminKey);
+}
+
+export function runAdminEvaluation(
+  adminKey: string,
+): Promise<AdminEvaluation["run_status"]> {
+  return adminFetch("/api/admin/evaluation/run", adminKey, { method: "POST" });
 }
 
 export function getAdminContext(

@@ -11,6 +11,8 @@ from lightrag.llm.openai import openai_complete_if_cache
 from lightrag.utils import EmbeddingFunc
 from raganything import RAGAnything, RAGAnythingConfig
 
+from .key_pool import OpenRouterKeyPool, RECOVERABLE_STATUS_CODES
+
 
 SCOPE_RE = re.compile(r"^[a-z]+:[A-Za-z0-9_-]+$")
 SOURCE_RE = re.compile(
@@ -117,10 +119,31 @@ def build_blocks(processed_dir: Path) -> tuple[list[dict], dict[str, int]]:
 class EngineRegistry:
     def __init__(self):
         self.storage_root = Path(os.getenv("RAG_STORAGE_ROOT", "/data/rag_storage"))
-        self.api_key = os.getenv("OPENROUTER_API_KEY", "")
         self.base_url = os.getenv("OPENROUTER_API_BASE_URL", "https://openrouter.ai/api/v1")
+        openrouter_keys = {
+            "phuc": os.getenv("OPENROUTER_API_KEY_PHUC", ""),
+            "khang": os.getenv("OPENROUTER_API_KEY_KHANG", ""),
+            "trinh": os.getenv("OPENROUTER_API_KEY_TRINH", ""),
+            "default": os.getenv("OPENROUTER_API_KEY", ""),
+        }
+        rag_order = [
+            name.strip().casefold()
+            for name in os.getenv(
+                "OPENROUTER_RAG_KEY_ORDER",
+                "trinh,phuc,khang,default",
+            ).split(",")
+            if name.strip()
+        ]
+        self.openrouter_pool = OpenRouterKeyPool(
+            openrouter_keys,
+            {"rag": rag_order},
+        )
         dedicated_llm_key = os.getenv("RAG_LLM_API_KEY", "")
-        self.llm_api_key = dedicated_llm_key or self.api_key
+        fallback_keys = self.openrouter_pool.candidates("rag")
+        self.llm_api_key = (
+            dedicated_llm_key
+            or (fallback_keys[0].value if fallback_keys else "")
+        )
         self.llm_base_url = (
             os.getenv("RAG_LLM_BASE_URL", "https://api.groq.com/openai/v1")
             if dedicated_llm_key
@@ -140,28 +163,57 @@ class EngineRegistry:
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def _embedding_func(self, texts: list[str]) -> np.ndarray:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost:3000",
-            "X-OpenRouter-Title": "Kute RAG-Anything",
-        }
         payload = {
             "model": self.embedding_model,
             "input": texts,
             "dimensions": self.embedding_dimensions,
             "encoding_format": "float",
         }
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            response = await client.post(
-                f"{self.base_url.rstrip('/')}/embeddings",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            body = response.json()
-        rows = sorted(body["data"], key=lambda item: item.get("index", 0))
-        return np.asarray([row["embedding"] for row in rows], dtype=np.float32)
+        failures: list[str] = []
+        for slot in self.openrouter_pool.candidates("rag"):
+            headers = {
+                "Authorization": f"Bearer {slot.value}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:3000",
+                "X-OpenRouter-Title": "Kute RAG-Anything",
+            }
+            try:
+                async with httpx.AsyncClient(timeout=90.0) as client:
+                    response = await client.post(
+                        f"{self.base_url.rstrip('/')}/embeddings",
+                        headers=headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                rows = sorted(body["data"], key=lambda item: item.get("index", 0))
+                self.openrouter_pool.mark_success(slot.name)
+                return np.asarray(
+                    [row["embedding"] for row in rows],
+                    dtype=np.float32,
+                )
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if status_code not in RECOVERABLE_STATUS_CODES:
+                    raise
+                retry_after = exc.response.headers.get("Retry-After")
+                try:
+                    retry_seconds = float(retry_after) if retry_after else None
+                except ValueError:
+                    retry_seconds = None
+                self.openrouter_pool.mark_failure(
+                    slot.name,
+                    status_code,
+                    retry_seconds,
+                )
+                failures.append(f"{slot.name}:{status_code}")
+            except httpx.RequestError:
+                self.openrouter_pool.mark_failure(slot.name, None)
+                failures.append(f"{slot.name}:network")
+        raise RuntimeError(
+            "Không có OpenRouter key khả dụng cho embedding."
+            + (f" ({', '.join(failures)})" if failures else "")
+        )
 
     async def _llm_func(
         self,

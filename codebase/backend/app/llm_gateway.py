@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import json
 import re
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from .config import Settings
+from .key_pool import OpenRouterKeyPool, RECOVERABLE_STATUS_CODES
 from .schemas import CommunityUser, DiscordMessage, Memory
 from .scopes import channel_record
 
@@ -24,41 +26,48 @@ class LLMGateway:
         self.settings = settings
         self.last_error: str | None = None
         self.last_success = False
+        self.last_provider: str | None = None
+        self.openrouter_pool = OpenRouterKeyPool(
+            settings.openrouter_keys,
+            settings.openrouter_flow_orders,
+        )
 
     @property
     def configured(self) -> bool:
-        return bool(self.settings.groq_api_key or self.settings.openrouter_api_key)
+        return bool(self.settings.groq_api_key or self.openrouter_pool.configured)
 
-    def _provider_config(self) -> tuple[str, str, str, dict[str, str], dict]:
-        if self.settings.groq_api_key:
-            return (
-                "groq",
-                self.settings.groq_api_base_url,
-                self.settings.groq_model,
+    async def _request_completion(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        provider: str,
+    ) -> str:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        provider_options: dict[str, object] = {"max_tokens": max_tokens}
+        if provider == "openrouter":
+            headers.update(
                 {
-                    "Authorization": f"Bearer {self.settings.groq_api_key}",
-                    "Content-Type": "application/json",
-                },
-                {
-                    "reasoning_effort": "none",
-                    "max_completion_tokens": 700,
-                },
+                    "HTTP-Referer": self.settings.openrouter_site_url,
+                    "X-OpenRouter-Title": "Kute Discord Copilot",
+                }
             )
-        return (
-            "openrouter",
-            self.settings.openrouter_api_base_url,
-            self.settings.openrouter_model,
-            {
-                "Authorization": f"Bearer {self.settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": self.settings.openrouter_site_url,
-                "X-OpenRouter-Title": "Kute Memory",
-            },
-            {"max_tokens": 700},
-        )
-
-    async def _complete(self, system_prompt: str, user_prompt: str) -> str:
-        provider, base_url, model, headers, provider_options = self._provider_config()
+            provider_options["reasoning"] = {
+                "effort": "none",
+                "exclude": True,
+            }
+        else:
+            provider_options = {
+                "reasoning_effort": "none",
+                "max_completion_tokens": max_tokens,
+            }
         payload = {
             "model": model,
             "messages": [
@@ -80,6 +89,81 @@ class LLMGateway:
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError(f"{provider} trả về content rỗng.")
         return content.strip()
+
+    @staticmethod
+    def _retry_after(response: httpx.Response) -> float | None:
+        value = response.headers.get("Retry-After")
+        if not value:
+            return None
+        try:
+            return max(1.0, float(value))
+        except ValueError:
+            return None
+
+    async def _complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        flow: str = "chat",
+        max_tokens: int = 700,
+    ) -> str:
+        failures: list[str] = []
+        for slot in self.openrouter_pool.candidates(flow):
+            try:
+                content = await self._request_completion(
+                    api_key=slot.value,
+                    base_url=self.settings.openrouter_api_base_url,
+                    model=self.settings.openrouter_model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=max_tokens,
+                    provider="openrouter",
+                )
+                self.openrouter_pool.mark_success(slot.name)
+                self.last_provider = (
+                    f"openrouter-pool:{flow}:{self.settings.openrouter_model}"
+                )
+                return content
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if status_code not in RECOVERABLE_STATUS_CODES:
+                    raise
+                self.openrouter_pool.mark_failure(
+                    slot.name,
+                    status_code,
+                    self._retry_after(exc.response),
+                )
+                failures.append(f"openrouter:{slot.name}:{status_code}")
+            except httpx.RequestError:
+                self.openrouter_pool.mark_failure(slot.name, None)
+                failures.append(f"openrouter:{slot.name}:network")
+
+        if self.settings.groq_api_key:
+            try:
+                content = await self._request_completion(
+                    api_key=self.settings.groq_api_key,
+                    base_url=self.settings.groq_api_base_url,
+                    model=self.settings.groq_model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=max_tokens,
+                    provider="groq",
+                )
+                self.last_provider = f"groq:{self.settings.groq_model}"
+                return content
+            except httpx.HTTPError as exc:
+                status_code = (
+                    exc.response.status_code
+                    if isinstance(exc, httpx.HTTPStatusError)
+                    else "network"
+                )
+                failures.append(f"groq:{status_code}")
+
+        raise RuntimeError(
+            "Không có provider khả dụng."
+            + (f" ({', '.join(failures)})" if failures else "")
+        )
 
     @staticmethod
     def _source_context(evidence: list[DiscordMessage]) -> str:
@@ -271,6 +355,131 @@ Viết câu trả lời ngay.
             self.last_success = False
             return fallback
 
+    async def build_daily_brief(
+        self,
+        user: CommunityUser,
+        messages: list[DiscordMessage],
+        window_hours: int,
+    ) -> list[dict] | None:
+        if not self.configured or not messages:
+            return None
+        source_lines: list[str] = []
+        for message in messages[:40]:
+            channel = channel_record(message.channel_id)
+            channel_name = channel.name if channel else message.channel_id
+            content = re.sub(r"\s+", " ", message.content).strip()[:420]
+            source_lines.append(
+                f"id={message.id} | #{channel_name} | {message.author_name} | "
+                f"{message.created_at.isoformat()} | {content}"
+            )
+        system_prompt = """
+Bạn là bộ phân loại daily brief cho một lớp học trên Discord.
+
+Đọc các tin nhắn đã được server lọc quyền và quyết định tin nào cần xuất hiện.
+Chỉ chọn một trong bốn loại: decision, task, blocker, announcement.
+Deadline phải được chép đúng từ tin nguồn; không suy đoán ngày hoặc giờ.
+Mỗi item phải trỏ tới đúng một message_id có trong đầu vào.
+Không đưa greeting, acknowledgement đơn giản hoặc hội thoại không hành động.
+Giới hạn 2 decision, 3 task, 2 blocker và 2 announcement.
+Trả về JSON thuần, không Markdown và không giải thích:
+{"items":[{"message_id":"...","kind":"task","title":"...",
+"owner":null,"deadline":null,"status":"open"}]}
+status chỉ nhận open, resolved hoặc unknown.
+""".strip()
+        user_prompt = (
+            f"USER: {user.name} | team:{user.team_id} | group:{user.group_id}\n"
+            f"WINDOW_HOURS: {window_hours}\n\n"
+            "AUTHORIZED_DISCORD_MESSAGES\n"
+            + "\n".join(source_lines)
+        )
+        try:
+            content = await self._complete(
+                system_prompt,
+                user_prompt,
+                flow="brief",
+                max_tokens=1400,
+            )
+            without_thinking = re.sub(
+                r"<think>.*?</think>",
+                "",
+                content,
+                flags=re.DOTALL | re.IGNORECASE,
+            ).strip()
+            without_fence = re.sub(
+                r"^```(?:json)?\s*|\s*```$",
+                "",
+                without_thinking,
+                flags=re.IGNORECASE,
+            )
+            start = without_fence.find("{")
+            end = without_fence.rfind("}")
+            if start < 0 or end <= start:
+                raise RuntimeError("Daily brief response không chứa JSON object.")
+            payload = json.loads(without_fence[start : end + 1])
+            raw_items = payload.get("items")
+            if not isinstance(raw_items, list):
+                raise RuntimeError("Daily brief response thiếu items.")
+            allowed_messages = {message.id: message for message in messages[:40]}
+            limits = {"decision": 2, "task": 3, "blocker": 2, "announcement": 2}
+            counts = {kind: 0 for kind in limits}
+            seen_ids: set[str] = set()
+            items: list[dict] = []
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                message_id = str(raw.get("message_id") or "")
+                kind = str(raw.get("kind") or "")
+                if (
+                    message_id not in allowed_messages
+                    or message_id in seen_ids
+                    or kind not in limits
+                    or counts[kind] >= limits[kind]
+                ):
+                    continue
+                status = str(raw.get("status") or "unknown")
+                if status not in {"open", "resolved", "unknown"}:
+                    status = "unknown"
+                title = re.sub(r"\s+", " ", str(raw.get("title") or "")).strip()
+                if not title:
+                    continue
+                source_message = allowed_messages[message_id]
+                source_text = re.sub(
+                    r"\s+",
+                    " ",
+                    f"{source_message.author_name} {source_message.content}",
+                ).casefold()
+                owner = str(raw.get("owner") or "").strip()
+                if owner and owner.casefold() not in source_text:
+                    owner = ""
+                deadline = str(raw.get("deadline") or "").strip()
+                if deadline and deadline.casefold() not in source_text:
+                    deadline = ""
+                seen_ids.add(message_id)
+                counts[kind] += 1
+                items.append(
+                    {
+                        "message_id": message_id,
+                        "kind": kind,
+                        "title": title[:117],
+                        "owner": owner[:80] or None,
+                        "deadline": deadline[:100] or None,
+                        "status": status,
+                    }
+                )
+            self.last_error = None
+            self.last_success = True
+            return items
+        except (
+            httpx.HTTPError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            RuntimeError,
+        ) as exc:
+            self.last_error = str(exc)
+            self.last_success = False
+            return None
+
     def status(self) -> LLMStatus:
         if not self.configured:
             return LLMStatus(
@@ -281,9 +490,12 @@ Viết câu trả lời ngay.
         return LLMStatus(
             name=(
                 (
-                    f"groq:{self.settings.groq_model}"
-                    if self.settings.groq_api_key
-                    else f"openrouter:{self.settings.openrouter_model}"
+                    self.last_provider
+                    or (
+                        f"openrouter-pool:{self.settings.openrouter_model}"
+                        if self.openrouter_pool.configured
+                        else f"groq:{self.settings.groq_model}"
+                    )
                 )
                 if self.last_success or self.last_error is None
                 else "llm-fallback"

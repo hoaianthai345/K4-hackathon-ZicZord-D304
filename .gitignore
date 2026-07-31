@@ -28,3 +28,6 @@ codebase/traces/*.json
 codebase/data/raw/
 codebase/data/processed/*
 !codebase/data/processed/.gitkeep
+eval/results/latest.json
+eval/results/runs/
+eval/results/*.partial.json

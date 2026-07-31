@@ -9,6 +9,7 @@ import {
   Database,
   Eye,
   EyeSlash,
+  Flask,
   Funnel,
   MagnifyingGlass,
   Plus,
@@ -25,15 +26,18 @@ import {
   createAdminMemory,
   deleteAdminMemory,
   getAdminContext,
+  getAdminEvaluation,
   getAdminMemories,
   getAdminOverview,
   inspectContextPlan,
   reindexAdminContext,
+  runAdminEvaluation,
   updateAdminContext,
   updateAdminMemory,
 } from "@/lib/api";
 import type {
   AdminContextItem,
+  AdminEvaluation,
   AdminMemoryInput,
   AdminOverview,
   ContextPlanResponse,
@@ -43,9 +47,10 @@ import type {
 } from "@/lib/types";
 
 import { Logo } from "./logo";
+import { EvaluationDashboard } from "./evaluation-dashboard";
 import { ThemeToggle } from "./theme-toggle";
 
-type Panel = "context" | "memory" | "tools";
+type Panel = "evaluation" | "context" | "memory" | "tools";
 
 const SOURCE_LABELS: Record<AdminContextItem["source_type"], string> = {
   lesson: "Bài học",
@@ -78,10 +83,11 @@ function AdminSkeleton() {
 }
 
 export function AdminConsole() {
-  const [panel, setPanel] = useState<Panel>("context");
+  const [panel, setPanel] = useState<Panel>("evaluation");
   const [adminKey, setAdminKey] = useState("");
   const [keyReady, setKeyReady] = useState(false);
   const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [evaluation, setEvaluation] = useState<AdminEvaluation | null>(null);
   const [contexts, setContexts] = useState<AdminContextItem[]>([]);
   const [contextTotal, setContextTotal] = useState(0);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -113,12 +119,14 @@ export function AdminConsole() {
     setLoading(true);
     setError(null);
     try {
-      const [nextOverview, nextContext, nextMemories] = await Promise.all([
+      const [nextOverview, nextEvaluation, nextContext, nextMemories] = await Promise.all([
         getAdminOverview(key),
+        getAdminEvaluation(key),
         getAdminContext(key, { search, sourceType, limit: 50 }),
         getAdminMemories(key),
       ]);
       setOverview(nextOverview);
+      setEvaluation(nextEvaluation);
       setContexts(nextContext.items);
       setContextTotal(nextContext.total);
       setMemories(nextMemories);
@@ -144,6 +152,28 @@ export function AdminConsole() {
     // Session storage is read once on mount. Search is applied explicitly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const runState = evaluation?.run_status.state;
+    if (runState !== "starting" && runState !== "running") return;
+    const interval = window.setInterval(() => {
+      getAdminEvaluation(adminKey)
+        .then((nextEvaluation) => {
+          setEvaluation(nextEvaluation);
+          if (nextEvaluation.run_status.error) {
+            setError(nextEvaluation.run_status.error);
+          }
+        })
+        .catch((pollError) => {
+          setError(
+            pollError instanceof Error
+              ? pollError.message
+              : "Không cập nhật được tiến độ eval.",
+          );
+        });
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [adminKey, evaluation?.run_status.state]);
 
   function saveKey(event: FormEvent) {
     event.preventDefault();
@@ -290,6 +320,23 @@ export function AdminConsole() {
     }
   }
 
+  async function runEvaluation() {
+    setBusyId("run-evaluation");
+    try {
+      const runStatus = await runAdminEvaluation(adminKey);
+      setEvaluation((current) =>
+        current ? { ...current, run_status: runStatus } : current,
+      );
+      setError(null);
+    } catch (runError) {
+      setError(
+        runError instanceof Error ? runError.message : "Không khởi chạy được eval.",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (!keyReady || (loading && !overview && !needsKey)) {
     return (
       <main className="admin-root">
@@ -336,6 +383,14 @@ export function AdminConsole() {
         </div>
         <nav aria-label="Admin">
           <button
+            className={panel === "evaluation" ? "admin-nav-active" : ""}
+            onClick={() => setPanel("evaluation")}
+            type="button"
+          >
+            <Flask size={17} />
+            Evaluation
+          </button>
+          <button
             className={panel === "context" ? "admin-nav-active" : ""}
             onClick={() => setPanel("context")}
             type="button"
@@ -374,8 +429,10 @@ export function AdminConsole() {
           <div>
             <p className="admin-page-label">Kute operations</p>
             <h1>
-              {panel === "context"
-                ? "Context library"
+              {panel === "evaluation"
+                ? "AI evaluation"
+                : panel === "context"
+                  ? "Context library"
                 : panel === "memory"
                   ? "Confirmed memory"
                   : "Retrieval tool inspector"}
@@ -408,28 +465,34 @@ export function AdminConsole() {
           </div>
         )}
 
-        <section className="admin-metrics" aria-label="Tổng quan">
-          <article>
-            <p>Context đang bật</p>
-            <strong>{compactNumber(overview?.context_enabled ?? 0)}</strong>
-            <span>{disabledCount} record đang tắt</span>
-          </article>
-          <article>
-            <p>Nguồn bài học</p>
-            <strong>{compactNumber(lessonCount)}</strong>
-            <span>Transcript, slide và tutor Q&amp;A</span>
-          </article>
-          <article>
-            <p>Confirmed memory</p>
-            <strong>{overview?.memory_total ?? 0}</strong>
-            <span>{Object.keys(overview?.memory_by_scope ?? {}).length} scope có dữ liệu</span>
-          </article>
-          <article>
-            <p>RAG scopes</p>
-            <strong>{overview?.rag_indexed_scopes.length ?? 0}</strong>
-            <span>{overview?.rag_indexed_scopes.join(", ") || "Chưa index"}</span>
-          </article>
-        </section>
+        {panel !== "evaluation" && (
+          <section className="admin-metrics" aria-label="Tổng quan">
+            <article>
+              <p>Context đang bật</p>
+              <strong>{compactNumber(overview?.context_enabled ?? 0)}</strong>
+              <span>{disabledCount} record đang tắt</span>
+            </article>
+            <article>
+              <p>Nguồn bài học</p>
+              <strong>{compactNumber(lessonCount)}</strong>
+              <span>Transcript, slide và tutor Q&amp;A</span>
+            </article>
+            <article>
+              <p>Confirmed memory</p>
+              <strong>{overview?.memory_total ?? 0}</strong>
+              <span>{Object.keys(overview?.memory_by_scope ?? {}).length} scope có dữ liệu</span>
+            </article>
+            <article>
+              <p>RAG scopes</p>
+              <strong>{overview?.rag_indexed_scopes.length ?? 0}</strong>
+              <span>{overview?.rag_indexed_scopes.join(", ") || "Chưa index"}</span>
+            </article>
+          </section>
+        )}
+
+        {panel === "evaluation" && evaluation && (
+          <EvaluationDashboard report={evaluation} onRun={runEvaluation} />
+        )}
 
         {panel === "context" && (
           <section className="admin-panel">

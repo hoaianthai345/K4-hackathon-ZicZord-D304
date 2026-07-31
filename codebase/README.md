@@ -20,14 +20,36 @@ docker compose up --build
 
 - Landing kiêm pitch: <http://localhost:3000>
 - Discord Copilot: <http://localhost:3000/chat>
-- Context & memory admin: <http://localhost:3000/admin>
+- Evaluation, context & memory admin: <http://localhost:3000/admin>
 - FastAPI docs: <http://localhost:8000/docs>
 
 Landing và chat vẫn dùng UI hiện tại. Khi chưa index, chat tự fallback về Discord
 snapshot synthetic.
 
-Backend ưu tiên Groq khi có `GROQ_API_KEY`, sau đó mới fallback sang
-OpenRouter. Không đưa key vào source code hoặc image Docker.
+## Hồ sơ học viên và log hỏi đáp
+
+Trang `/chat` hỏi họ tên và 5 số cuối mã sinh viên trong lần truy cập đầu tiên.
+Frontend chỉ giữ `profile_id` trong `localStorage`; lần sau dùng ID này để khôi
+phục hồ sơ và vào thẳng chat. Nếu học viên nhập lại cùng 5 số cuối, backend cập
+nhật hồ sơ hiện có thay vì tạo bản trùng.
+
+PostgreSQL lưu hai bảng tối giản:
+
+- `learner_profiles`: họ tên, 5 số cuối, demo user mapping và thời điểm gần nhất.
+- `chat_interactions`: câu hỏi, câu trả lời, provider, citation và tool call.
+
+Hệ thống không thu IP, user agent, mã sinh viên đầy đủ hoặc lịch sử chỉnh sửa.
+Log chỉ được ghi khi chat từ một hồ sơ đã nhận diện; lỗi ghi log không làm mất
+câu trả lời đang trả cho học viên.
+
+Backend dùng OpenRouter pool theo luồng và giữ Groq làm fallback cuối.
+Không đưa key thật vào source code, image Docker hoặc file được commit.
+
+- Daily brief ưu tiên key `phuc`.
+- Chat/context synthesis ưu tiên key `khang`.
+- Embedding RAG ưu tiên key `trinh`.
+- Mỗi luồng thử các key còn lại khi gặp 401, 402, 429 hoặc lỗi provider.
+- Key lỗi quota được cooldown; `Retry-After` được tôn trọng khi có.
 
 ## Vercel frontend + Docker backend trên máy local
 
@@ -171,9 +193,16 @@ bỏ và link mở ở tab mới.
 
 Trang admin còn hỗ trợ:
 
+- Evaluation dashboard trả lời đủ AI decision, model, số câu thử, bốn nhóm rủi
+  ro, số câu từ quan sát thật, baseline và chuẩn đạt đã khóa.
+- Chạy lại 24 eval case mà không ghi chúng vào chat history hoặc memory.
 - Tìm và bật/tắt lesson, Discord message, issue episode và pain point.
 - Tạo, sửa, xóa confirmed memory theo scope.
 - Re-index Discord RAG theo digest idempotent.
+
+Bộ thử nằm ở `../eval/`. Baseline đầu tiên đạt `8/24` câu, thấp hơn chuẩn khóa
+`80%`; các lỗi deadline critical cũng chưa đạt zero-tolerance rule. Xem toàn bộ
+câu pass/fail trong `../eval/results/baseline.json`.
 
 Production nên đặt `ADMIN_API_KEY`; UI giữ key trong `sessionStorage` và gửi qua
 `X-Admin-Key`. Khi biến này trống, admin được mở để demo local.

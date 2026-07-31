@@ -24,8 +24,12 @@ services:
       - "8010:8010"
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_API_KEY_PHUC: ${OPENROUTER_API_KEY_PHUC:-}
+      OPENROUTER_API_KEY_KHANG: ${OPENROUTER_API_KEY_KHANG:-}
+      OPENROUTER_API_KEY_TRINH: ${OPENROUTER_API_KEY_TRINH:-}
+      OPENROUTER_RAG_KEY_ORDER: ${OPENROUTER_RAG_KEY_ORDER:-trinh,phuc,khang,default}
       OPENROUTER_API_BASE_URL: ${OPENROUTER_API_BASE_URL:-https://openrouter.ai/api/v1}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-qwen/qwen3.6-27b}
       RAG_LLM_API_KEY: ${GROQ_API_KEY:-}
       RAG_LLM_BASE_URL: ${GROQ_API_BASE_URL:-https://api.groq.com/openai/v1}
       RAG_LLM_MODEL: ${GROQ_MODEL:-qwen/qwen3.6-27b}
@@ -64,7 +68,12 @@ services:
       APIFY_DATASET_ID: ${APIFY_DATASET_ID:-}
       APIFY_API_BASE_URL: ${APIFY_API_BASE_URL:-https://api.apify.com/v2}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-26b-a4b-it:free}
+      OPENROUTER_API_KEY_PHUC: ${OPENROUTER_API_KEY_PHUC:-}
+      OPENROUTER_API_KEY_KHANG: ${OPENROUTER_API_KEY_KHANG:-}
+      OPENROUTER_API_KEY_TRINH: ${OPENROUTER_API_KEY_TRINH:-}
+      OPENROUTER_CHAT_KEY_ORDER: ${OPENROUTER_CHAT_KEY_ORDER:-khang,trinh,phuc,default}
+      OPENROUTER_BRIEF_KEY_ORDER: ${OPENROUTER_BRIEF_KEY_ORDER:-phuc,khang,trinh,default}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-qwen/qwen3.6-27b}
       OPENROUTER_API_BASE_URL: ${OPENROUTER_API_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:3000}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -75,9 +84,11 @@ services:
       RAG_ANYTHING_URL: http://rag-anything:8010
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8000}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      EVAL_DIR: /app/eval
       STATE_PATH: /app/state/demo_state.json
     volumes:
       - demo-state:/app/state
+      - ../eval:/app/eval
     depends_on:
       postgres:
         condition: service_healthy

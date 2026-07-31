@@ -122,6 +122,23 @@ class ChatRequest(BaseModel):
     user_id: str
     message: str = Field(min_length=1, max_length=1200)
     channel_id: str = "bot-commands"
+    profile_id: str | None = Field(default=None, max_length=80)
+
+
+class LearnerProfileCreate(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+    student_id_last5: str = Field(pattern=r"^\d{5}$")
+    demo_user_id: str = "U01862"
+
+
+class LearnerProfile(BaseModel):
+    profile_id: str
+    full_name: str
+    student_id_last5: str
+    demo_user_id: str
+    created_at: datetime
+    updated_at: datetime
+    last_seen_at: datetime
 
 
 class ContextToolCall(BaseModel):
@@ -159,6 +176,7 @@ class CatchupBrief(BaseModel):
     summary: str
     items: list[CatchupItem]
     acknowledged: bool = False
+    provider: str = "deterministic-fallback"
 
 
 class CatchupRequest(BaseModel):

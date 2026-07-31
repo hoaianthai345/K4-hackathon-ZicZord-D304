@@ -3,6 +3,15 @@ import os
 from pathlib import Path
 
 
+def default_eval_dir() -> Path:
+    parents = Path(__file__).resolve().parents
+    return parents[3] / "eval" if len(parents) > 3 else Path("/app/eval")
+
+
+def split_order(value: str) -> list[str]:
+    return [item.strip().casefold() for item in value.split(",") if item.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Kute Discord Catch-up Copilot API"
@@ -21,7 +30,24 @@ class Settings:
     )
     openrouter_model: str = os.getenv(
         "OPENROUTER_MODEL",
-        "google/gemma-4-26b-a4b-it:free",
+        "qwen/qwen3.6-27b",
+    )
+    openrouter_api_key_phuc: str | None = (
+        os.getenv("OPENROUTER_API_KEY_PHUC") or None
+    )
+    openrouter_api_key_khang: str | None = (
+        os.getenv("OPENROUTER_API_KEY_KHANG") or None
+    )
+    openrouter_api_key_trinh: str | None = (
+        os.getenv("OPENROUTER_API_KEY_TRINH") or None
+    )
+    openrouter_chat_key_order: str = os.getenv(
+        "OPENROUTER_CHAT_KEY_ORDER",
+        "khang,trinh,phuc,default",
+    )
+    openrouter_brief_key_order: str = os.getenv(
+        "OPENROUTER_BRIEF_KEY_ORDER",
+        "phuc,khang,trinh,default",
     )
     openrouter_site_url: str = os.getenv(
         "OPENROUTER_SITE_URL",
@@ -42,6 +68,12 @@ class Settings:
     rag_anything_url: str | None = os.getenv("RAG_ANYTHING_URL") or None
     api_public_url: str = os.getenv("API_PUBLIC_URL", "http://localhost:8000")
     admin_api_key: str | None = os.getenv("ADMIN_API_KEY") or None
+    eval_dir: Path = Path(
+        os.getenv(
+            "EVAL_DIR",
+            str(default_eval_dir()),
+        )
+    )
     state_path: Path = Path(
         os.getenv(
             "STATE_PATH",
@@ -56,6 +88,23 @@ class Settings:
             for origin in self.frontend_origin.split(",")
             if origin.strip()
         ]
+
+    @property
+    def openrouter_keys(self) -> dict[str, str]:
+        values = {
+            "phuc": self.openrouter_api_key_phuc,
+            "khang": self.openrouter_api_key_khang,
+            "trinh": self.openrouter_api_key_trinh,
+            "default": self.openrouter_api_key,
+        }
+        return {name: value for name, value in values.items() if value}
+
+    @property
+    def openrouter_flow_orders(self) -> dict[str, list[str]]:
+        return {
+            "chat": split_order(self.openrouter_chat_key_order),
+            "brief": split_order(self.openrouter_brief_key_order),
+        }
 
 
 settings = Settings()

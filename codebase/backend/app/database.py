@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from .config import Settings
 
@@ -124,6 +125,37 @@ CREATE INDEX IF NOT EXISTS learning_context_search_idx
 CREATE INDEX IF NOT EXISTS learning_context_trgm_idx
     ON learning_context USING gin (content_search gin_trgm_ops);
 
+CREATE TABLE IF NOT EXISTS learner_profiles (
+    profile_id TEXT PRIMARY KEY,
+    full_name TEXT NOT NULL,
+    student_id_last5 VARCHAR(5) NOT NULL UNIQUE,
+    demo_user_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT learner_profiles_student_id_last5_format
+        CHECK (student_id_last5 ~ '^[0-9]{5}$')
+);
+
+CREATE INDEX IF NOT EXISTS learner_profiles_last_seen_idx
+    ON learner_profiles (last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS chat_interactions (
+    interaction_id TEXT PRIMARY KEY,
+    profile_id TEXT REFERENCES learner_profiles(profile_id) ON DELETE SET NULL,
+    demo_user_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    citations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tool_calls JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS chat_interactions_profile_time_idx
+    ON chat_interactions (profile_id, created_at DESC);
+
 """
 
 
@@ -206,6 +238,107 @@ class Database:
                 learning_contexts=0,
                 error=self.last_error,
             )
+
+    async def get_learner_profile(self, profile_id: str) -> dict | None:
+        if not self.settings.database_url:
+            return None
+        async with await psycopg.AsyncConnection.connect(
+            self.settings.database_url,
+            row_factory=dict_row,
+        ) as connection:
+            cursor = await connection.execute(
+                """
+                SELECT
+                    profile_id, full_name, student_id_last5, demo_user_id,
+                    created_at, updated_at, last_seen_at
+                FROM learner_profiles
+                WHERE profile_id = %s
+                """,
+                (profile_id,),
+            )
+            return await cursor.fetchone()
+
+    async def upsert_learner_profile(
+        self,
+        *,
+        profile_id: str,
+        full_name: str,
+        student_id_last5: str,
+        demo_user_id: str,
+    ) -> dict:
+        if not self.settings.database_url:
+            raise RuntimeError("PostgreSQL chưa được cấu hình.")
+        async with await psycopg.AsyncConnection.connect(
+            self.settings.database_url,
+            autocommit=True,
+            row_factory=dict_row,
+        ) as connection:
+            cursor = await connection.execute(
+                """
+                INSERT INTO learner_profiles (
+                    profile_id, full_name, student_id_last5, demo_user_id
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (student_id_last5) DO UPDATE SET
+                    full_name = EXCLUDED.full_name,
+                    demo_user_id = EXCLUDED.demo_user_id,
+                    updated_at = NOW(),
+                    last_seen_at = NOW()
+                RETURNING
+                    profile_id, full_name, student_id_last5, demo_user_id,
+                    created_at, updated_at, last_seen_at
+                """,
+                (profile_id, full_name, student_id_last5, demo_user_id),
+            )
+            profile = await cursor.fetchone()
+        self.last_error = None
+        return profile
+
+    async def log_chat_interaction(
+        self,
+        *,
+        interaction_id: str,
+        profile_id: str,
+        demo_user_id: str,
+        channel_id: str,
+        question: str,
+        answer: str,
+        provider: str,
+        citations: list[dict],
+        tool_calls: list[dict],
+    ) -> bool:
+        if not self.settings.database_url:
+            return False
+        try:
+            async with await psycopg.AsyncConnection.connect(
+                self.settings.database_url,
+                autocommit=True,
+            ) as connection:
+                await connection.execute(
+                    """
+                    INSERT INTO chat_interactions (
+                        interaction_id, profile_id, demo_user_id, channel_id,
+                        question, answer, provider, citations, tool_calls
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        interaction_id,
+                        profile_id,
+                        demo_user_id,
+                        channel_id,
+                        question,
+                        answer,
+                        provider,
+                        Jsonb(citations),
+                        Jsonb(tool_calls),
+                    ),
+                )
+            self.last_error = None
+            return True
+        except psycopg.Error as exc:
+            self.last_error = str(exc)
+            return False
 
     async def source(self, source_type: str, source_id: str) -> dict | None:
         if not self.settings.database_url:
