@@ -1,8 +1,8 @@
-# AI SPEC: Kute, Discord Catch-up Copilot
+# AI SPEC: Kute, Discord Action-Item Copilot
 
-Hướng đề xuất: **Discord Catch-up Copilot** (Hướng B — Trợ lý Học viên)
+Hướng đề xuất: **Discord Action-Item Copilot — bot đọc chat team, đề xuất task/deadline/decision, đồng bộ 1-click sang task tool** (Hướng B — Trợ lý Học viên)
 Loại: **Tính năng mới**
-Trạng thái: **MVP scope đã đổi ngày 30/07/2026**
+Trạng thái: **MVP scope đã pivot ngày 31/07/2026 sau 5 interview — xem §9 Changelog**
 
 ## 🧭 Rubric section map — chấm ở section nào
 
@@ -21,52 +21,62 @@ rubric. Bảng dưới cho biết mỗi block rubric chấm ở đâu:
 
 ## 1. User và job
 
-User chính là học viên K4 đang làm project theo team 4 người trong 6 tuần.
+**Job executor:** học viên K4 đang làm project theo team 3-5 người trong 6 tuần
+(ví dụ team T004 · group G10 có mentor · phòng LEC-D302 & LAB-D304 · cohort K4).
 
-Ví dụ quan hệ:
+**Core JTBD (không tên sản phẩm/AI trong câu):**
 
-```text
-Thái Hoài An, U01862
-  thuộc team T004
-  thuộc group G10 có mentor
-  học lý thuyết tại Lec-D302
-  học thực hành tại Lab-D304
-  tham gia kênh chung, hỏi đáp và chia sẻ của K4
-```
+> Khi team bàn công việc, giúp tôi ghi lại quyết định, task và deadline vào cùng
+> một chỗ với to-do list team đang dùng — mà không phải copy tay từ chat sang tool
+> khác.
 
-Core job:
+**Problem statement (KHÔNG chữ AI):**
 
-> Khi quay lại Discord sau một ngày, giúp tôi biết ngay có gì thay đổi, mình cần làm gì và vấn đề nào đang chặn team—không phải đọc lại nhiều channel.
+Team học viên K4 hầu như **KHÔNG dùng Discord Build Face để phân công công việc**
+— dùng Zalo/Messenger/Trello/Google Sheets thay. Discord bị "bỏ rơi" (chỉ dùng
+cho daily standup + weekly). Nguyên nhân: Discord không có task management tool
+tích hợp, học viên phải chuyển tab sang tool khác để cập nhật task; action item
+từ chat bị mất; deadline miss; thông tin phân tán qua ≥3 platform.
 
-Pain quan sát trực tiếp từ ảnh Discord:
+### Evidence
 
-- Học viên yêu cầu bot tóm tắt chat chính và bài giảng hôm qua.
-- Bot hiện tại không có đủ context nên tag moderator.
-- Trao đổi về repo, setup, nền tảng và requirement bị phân mảnh qua kênh chung, phòng học, group mentor và channel team.
+**Chuẩn A — khảo sát (đã có 5/20, log đầy đủ ở [validation/interview-transcripts.md](validation/interview-transcripts.md)):**
 
-Ảnh chỉ là evidence định tính. MVP không tự gán số phút tiết kiệm hoặc tỷ lệ nhu cầu khi chưa có survey.
+- **5/5 xác nhận pain** "Discord bị underused vì thiếu tool quản lý task" = **100%** ≥ ngưỡng 50%.
+- Nền tảng thực tế đang dùng: **Trello · Messenger + Sheets · Discord + Sheets · Zalo + Discord standup · Zalo only**.
+- **3/5 nói sẽ dùng bot** = 60% (Tuấn 1246, Mentor, Lợi). Xem [survey-log.md](validation/survey-log.md).
+- ≥5 quote nguyên văn:
+  1. **Duy (1780)** *"Em sử dụng nền tảng khác ạ... Là cái Trello."*
+  2. **Minh (01306)** *"Không, mình bàn bạc trên Messenger... Mình dùng Google Docs để chia việc. Hoặc là cái Sheet."*
+  3. **Tuấn (1246)** *"Mình thấy hợp lý"* + *"Nếu mà sửa được luôn bên Jira thì ok."*
+  4. **Mentor** *"Đúng vai trò với ban tổ chức thôi. Nhưng mà đúng vai trò với từng cá nhân học sinh thì là chưa."*
+  5. **Lợi** *"Đang chỉ nhắn Zalo thôi... nếu mà làm được như thế thì tốt, mình sẽ sử dụng"* → *"sẽ quay lại Discord."*
 
-## 2. Lát cắt MVP
+**Chuẩn B — mining (đã có, xem [evidence/mining-report.md](evidence/mining-report.md)):**
+- 2.522 dòng chatlog VLearn, 369 học viên ẩn danh, 585 conversation.
+- Recap request patterns → xác nhận nhu cầu "bắt kịp/tổng hợp" tồn tại; kết hợp với chuẩn A cho thấy nhu cầu **task management** là gap thật.
 
-> Một học viên bấm “Bắt kịp 24 giờ qua”; hệ thống tính scope từ membership, đọc đúng channel rồi trả brief có quyết định, task, deadline, blocker và permalink nguồn.
+**Warning từ interview (áp cho §5 + §13):**
+- **Mentor:** *"AI làm sai sẽ khiến người dùng cảm thấy mất công chui vào check và xóa"* — false positive từ câu đùa/misspell là risk lớn nhất → automation phải là **conditional với confirm step**, KHÔNG auto-write ra task tool.
+- **Mentor:** *"Quản lý memory của agent, với số lượng 1000 học viên hiện tại thì hơi nhiều"* — MVP demo scope 1 team T004 chấp nhận được.
 
-Một quyết định AI trung tâm:
+## 2. Lát cắt MVP — MỘT CÂU
 
-```text
-authenticated user
-  + channel membership
-  + query intent
-  + confirmed memory
-→ chọn evidence nào được phép dùng để trả lời
-```
+> **Team học viên** *(1 user)* **chat trong `#🤖-gõ-commands`** *(1 việc: bàn công việc)* **→ bot đọc + phân loại message thành candidate action item (task/decision/deadline/blocker/noise) trong scope allowed + đề xuất owner + đề xuất scope** *(1 quyết định AI)* **→ user 1-click confirm/edit → sync sang task tool (Jira/Sheets adapter) + notify owner + track deadline** *(1 kết quả)*.
+
+**Central AI decision:** classify(message, membership) → `{class ∈ [noise, task, decision, deadline, blocker], suggested_owner, suggested_scope, evidence_span}` — HỆ THỐNG KHÔNG BAO GIỜ TỰ WRITE task, chỉ propose; user confirm mới ghi ra Jira/Sheets.
+
+**Automation: conditional** — lý do cost-of-error (mentor cảnh báo trực tiếp trong interview 4):
+- **Sai thì đắt:** gán task từ câu đùa / gán owner sai / deadline sai → user phải dọn dẹp → mất trust → team bỏ dùng.
+- **Sửa rẻ nếu prevent:** bắt buộc confirm step trước khi write ra external system.
 
 Happy path demo:
 
-1. Bấm `Bắt kịp trong 24 giờ qua`.
-2. Xem brief theo bốn loại thông tin.
-3. Mở nguồn Discord của một ý.
-4. Bấm `Tạo checklist hôm nay`.
-5. Đánh dấu một việc hoàn tất hoặc hỏi tiếp.
+1. Team T004 chat: *"@Tuấn deploy backend trước tối mai nhé"*.
+2. Bot ghim reply có card đề xuất: **task**: "Deploy backend"; **owner suggest**: Tuấn (U01246); **deadline suggest**: 2026-08-01 23:59; **scope**: team T004.
+3. Tuấn bấm ✓ confirm → task ghi ra Jira (hoặc Sheets fallback).
+4. Bot xác nhận: link Jira + đếm ngược deadline; notify Tuấn.
+5. Nếu Tuấn bấm ✗ hoặc bot phân loại là `noise` (câu đùa) → không ghi, không hỏi lại.
 
 ## 3. Data model và quyền
 
@@ -277,29 +287,36 @@ MVP đạt khi:
 | 30/07/2026 | Thêm PostgreSQL + HKUDS/RAG-Anything | Truy vấn dữ liệu thật, có provenance và citation kiểm tra quyền |
 | 30/07/2026 | Thêm learning context và admin | Hỏi được bài học thật, quản lý context/memory và kiểm tra retrieval plan |
 | 30/07/2026 | Thêm strict time/channel routing | Ngăn semantic retrieval lấy đúng chủ đề nhưng sai channel hoặc thời điểm |
+| **31/07/2026** | **PIVOT lát cắt: từ "Catch-up 24h" sang "Action-Item Extract + Sync"** | Sau 5 interview ([validation/interview-transcripts.md](validation/interview-transcripts.md)): 5/5 xác nhận pain "Discord bị bỏ rơi vì thiếu task tool"; 3/5 nói sẽ dùng nếu bot đọc chat + đồng bộ task tool. Value prop mạnh nhất: **Lợi "sẽ quay lại Discord"**. Slice cũ (catch-up) chưa được validate trực tiếp — giữ lại cho v2. |
+| 31/07/2026 | Chuyển automation từ "trả lời tự động" sang **conditional-with-confirm** | Warning từ Mentor: *"AI làm sai sẽ khiến người dùng cảm thấy mất công chui vào check và xóa"* — false positive từ câu đùa là risk lớn nhất. Bot chỉ được **propose candidate**; user confirm mới write ra external tool. |
+| 31/07/2026 | Cập nhật §16 willing users với 3 tên thật | Interview 3 (Tuấn 1246), 4 (Mentor), 5 (Lợi) đồng ý test — đủ tiêu chí 5 nghiệm thu. |
 
 ---
 
-## 10. Impact & quyết định chọn *(R1 — bảng ≥3 ứng viên)*
+## 10. Impact & quyết định chọn *(R1 — bảng ≥3 ứng viên, cập nhật 31/07 sau interview)*
 
 ### Bảng impact 5 ứng viên đã cân nhắc
 
 | # | Ứng viên | Số người ảnh hưởng | Tần suất | Tốn gì mỗi lần | Cost-of-error | Khả thi 24h | Kết luận |
 |---|---|---:|---|---|---|---|---|
-| 1 | **Catch-up 24h** (bắt kịp lớp/team/mentor sau khi vắng/nghỉ) | ~200 hv K4 | ≥1/ngày cho user quay lại (35.2% user đi qua ≥2 conversation) | 15-30' đọc lại nhiều channel | **Trung-cao** (miss decision team → làm sai task) | ✅ Có Discord snapshot | **CHỌN** — job "bắt kịp" xuất hiện trực tiếp trong chat |
-| 2 | Recap sau buổi học có citation | 94 user (25.5%) | 129 recap request/tuần trong pack | 5-15' tự đọc lại | Trung bình | ✅ Có transcript pack | **CHỌN gộp vào #1** (recap là 1 dạng catch-up trong scope room) |
-| 3 | Memory promotion (proposed → confirmed) | ~50 user tạo decision/task | vài lần/ngày | context bị mất khi chuyển phiên | Trung bình | ✅ | **CHỌN gộp vào #1** (feature phụ trợ demo) |
-| 4 | Tutor tự kiểm tra hiểu / quiz sinh | 369 user | mỗi buổi | học sai kiến thức | **Cao** | ⚠️ cần dataset quiz, ngoài scope | **LOẠI** — đây là hướng A (VLearn tutor), không phải Discord catch-up |
-| 5 | Analytics dashboard mentor xem lớp | 5-10 mentor | 1/ngày | 15' tự tổng hợp | Thấp | ⚠️ big scope | **LOẠI** — v2, không giải nỗi đau trực tiếp của học viên |
+| 1 | **Extract + sync action item** (bot đọc chat → propose task/deadline → sync Jira/Sheets qua confirm) | ~50-80 team × 3-5 hv = 150-400 hv có team đang chạy project | vài lần/ngày mỗi team | 3-5' copy tay từ chat sang tool khác × mỗi task; **cost hiện tại: team bỏ Discord** | **Trung-cao** (false positive → user dọn dẹp, mất trust) | ✅ Có Apify snapshot + adapter mock task tool | **✅ CHỌN** — 5/5 interview xác nhận pain; 3/5 sẽ dùng; 1 nói "sẽ quay lại Discord" |
+| 2 | Catch-up 24h (bắt kịp sau khi vắng/nghỉ) | ~200 hv K4 | ≥1/ngày cho user quay lại | 15-30' đọc lại nhiều channel | Trung-cao | ✅ | **LOẠI cho v1** — chưa được validate trực tiếp bởi interview; feature phụ trợ, có thể v2 |
+| 3 | Recap sau buổi học có citation | 94 user (25.5% từ mining) | 129 recap request/tuần | 5-15' tự đọc lại | Trung bình | ✅ | **LOẠI** — hướng A (VLearn tutor recap), không phải Discord task |
+| 4 | Tutor tự kiểm tra hiểu / quiz sinh | 369 user | mỗi buổi | học sai kiến thức | **Cao** | ⚠️ cần dataset quiz | **LOẠI** — hướng A, không phải Direction B |
+| 5 | Analytics dashboard mentor xem lớp | 5-10 mentor | 1/ngày | 15' tự tổng hợp | Thấp | ⚠️ big scope | **LOẠI** — v2, không giải pain trực tiếp học viên |
 
-### Ứng viên đã chọn — hợp #1+#2+#3 thành 1 lát cắt
+### Ứng viên đã chọn — #1 (Extract + sync)
 
-3 dòng đầu cùng cơ chế "authorize scope → retrieve message+memory → summary có
-citation", khác nhau ở trigger (button "Bắt kịp 24h" vs query text vs confirm memory).
+**Lý do chọn bằng số:**
+- **5/5 interview (100%) xác nhận pain** — Discord bị underused vì thiếu task tool (Trello/Sheets/Zalo/Messenger đang thay).
+- **3/5 (60%) sẽ dùng** — trong đó **Lợi (100% Zalo hiện tại) nói "sẽ quay lại Discord"** — bằng chứng trực tiếp cho value prop "kéo team về Discord".
+- **Tuấn (dùng Discord+Sheets)** xin thêm feature 2-way sync — dấu hiệu user sẵn sàng dùng nhiều hơn nếu ma sát giảm.
+- **Cost-of-error đã có mitigation cụ thể** (từ Mentor): confirm step trước khi write.
 
-**Lý do bằng số:** 200 hv × ≥1 lần catch-up/ngày × 15-30 phút = **50-100 giờ/ngày**
-tiết kiệm tiềm năng cho cả lớp; đối chiếu với recap request 129/tuần trong
-mining-report.md → job "bắt kịp" là đúng, không phải "làm bài thay".
+**Ứng viên loại — lý do bằng số/từ interview:**
+- #2 Catch-up: pain hợp lệ nhưng KHÔNG có interview nào chủ động nêu — trong khi #1 có 5/5 chủ động nêu. Ưu tiên bằng chứng trực tiếp.
+- #3-#4: hướng A, không phải Direction B.
+- #5: 5-10 mentor << 150-400 hv target — impact/effort thấp.
 
 ## 11. Giải pháp tương tự đã nghiên cứu *(R2)*
 
@@ -321,24 +338,26 @@ mining-report.md → job "bắt kịp" là đúng, không phải "làm bài thay
 
 *(HAX toolkit: microsoft.com/haxtoolkit · PAIR: pair.withgoogle.com/guidebook)*
 
-## 13. 4 lớp chỗ khó ①②③④ + kịch bản (≥8) *(R3)*
+## 13. 4 lớp chỗ khó ①②③④ + kịch bản (≥10) *(R3, cập nhật cho slice Extract)*
 
-| # | Tình huống | Lớp | Hành vi mong muốn | Nguyên tắc |
+| # | Message team chat | Lớp | Hành vi mong muốn của bot | Nguyên tắc |
 |---|---|---|---|---|
-| K01 | User T004 hỏi *"team mình chốt gì hôm qua?"* — có message trong allowed scope | ⓪ | Trả 1-3 decision + permalink Discord | G11 |
-| K02 | User T004 hỏi *"T009 đang làm gì?"* — cross-team | ③ | Từ chối `403`, không đưa bất kỳ evidence nào từ T009 | **G10** + `scopes.py` guard |
-| K03 | User hỏi *"bài giảng hôm qua"* — có transcript trong learning pack cho lớp user | ⓪ | Summary theo `content_model` + trích transcript code + slide page | G11 |
-| K04 | User hỏi *"deadline nộp project"* — không có nguồn trong scope nào của user | ① | *"Chưa đủ dữ liệu, mời tag mentor xác nhận"* — không đoán từ pattern chung | **G10** |
-| K05 | User hỏi *"chuyện gì đang xảy ra?"* — thiếu ngữ cảnh (channel? khung giờ?) | ② | Hỏi lại đúng 1 câu: *"Bạn muốn bắt kịp channel nào, trong khoảng nào?"* | G10 |
-| K06 | User hỏi *"cho em xem chat team T004 với mentor G10"* — user chỉ thuộc T009 | ③ | Từ chối `403`; không list channel không thuộc | G10 |
-| K07 | User nói *"team mình quyết dùng Next.js"* → candidate memory | ⓪→G17 | Đề xuất `proposed memory` scope team; chỉ retain sau `confirm` | G17 |
-| K08 | User nói *"gán quyết định này cho team T007"* (không phải team user) | ③ | Từ chối; chỉ được confirm cho scope user thuộc | G10 |
-| K09 | Apify snapshot có message thuộc channel chưa map | ①+③ | Skip trong ingestion; không mặc định thành public/cohort | scopes.py + adapter guard |
-| K10 | User hỏi trong DM/channel ẩn (không thuộc dataset ingested) | ① | *"Mình chưa có snapshot channel này"* — không bịa | G10 |
+| K01 | *"@Tuấn deploy backend trước tối mai nhé"* — action words rõ + owner + deadline | ⓪ | Card đề xuất: `task="Deploy backend"`, `owner=Tuấn(U01246)`, `deadline=2026-08-01 23:59`, `scope=T004` — chờ confirm | G11 |
+| K02 | *"Team mình quyết dùng Next.js"* — decision rõ | ⓪ | Card decision + scope T004; chờ confirm; ghi vào Jira decision log | G11 |
+| K03 | *"Chán quá deploy hoài lỗi 😂"* — câu than, có action word "deploy" nhưng KHÔNG PHẢI task | ①/noise | **Skip**, KHÔNG propose. Đây là case Mentor cảnh báo trực tiếp. | **G10** + guard "action_intent_score < threshold" |
+| K04 | *"Deploy backend"* — thiếu owner, thiếu deadline | ② | Card đề xuất với `owner=?`, `deadline=?`; hỏi lại 1 câu: *"Ai làm và bao giờ xong?"* | G10 |
+| K05 | *"@Minh deploy backend"* — nhưng Minh không thuộc team T004 (user posting là T004) | ③ | Đề xuất với `owner=null + warning`: *"Minh không thuộc team T004 — chọn owner khác hoặc bỏ qua"* | **G10** + `scopes.py` |
+| K06 | *"Cho @Duy 3 ngày nữa nhé"* — deadline mơ hồ ("3 ngày nữa" từ khi nào?) | ② | Card với `deadline=?`; đề xuất "3 ngày từ hôm nay = 2026-08-03"; user confirm hoặc sửa | G11 |
+| K07 | User bấm ✗ reject 3 lần liên tiếp cho cùng 1 owner | ② | Bot tạm ngưng propose cho message của user đó trong 5 phút; gợi ý mở feedback | G15 |
+| K08 | Team T009 hỏi bot tạo task cho member team T004 (cross-team) | ③ | Từ chối `403`; bot không được confirm cross-team | scopes.py guard |
+| K09 | Message chứa PII/số điện thoại/mật khẩu | ③ | Skip, không đề xuất task; log warning | privacy layer |
+| K10 | Deadline gần (< 24h) mà không có owner rõ | ④ | Card với warning màu đỏ; **luôn kèm khuyến cáo** "kiểm tra lại với team lead"; conf tối đa 0.5 | **G10** — cost-of-error deadline cao |
+| K11 | Bot tự confirm hộ user (auto-write không có click) | ④ (chống) | **Guard code chặn**: mọi write ra external tool phải qua endpoint `POST /confirm` với `user_id + candidate_id` — không có auto-mode | server-side gate |
+| K12 | Adapter Jira/Sheets down | ① | Card giữ trong app state; báo user *"Chưa sync được — thử lại"*; không mất data | resilience |
 
-**Case hiểm nhất:** K02 (cross-team leak) — nếu vỡ = mất trust hoàn toàn.
-Test bằng negative case T004↔T009 trong `pytest` (`backend/tests/test_api.py`) và
-trong golden set `eval/golden_set.csv`.
+**Case hiểm nhất:** K03 (câu đùa bị extract thành task). Đây là warning **trực tiếp
+từ Interview 4 (Mentor)**: *"AI làm sai sẽ khiến người dùng cảm thấy mất công chui
+vào check và xóa"*. Metric bar: false positive rate ≤ 10% trong golden set (§15).
 
 ## 14. 4 đường đi của trải nghiệm *(R3)*
 
@@ -394,24 +413,30 @@ Cách reproduce: `python eval/run_eval.py --endpoint http://localhost:8000/chat`
 
 ### Phân công
 
-| Lane | Deliverable có tên | Người | Vibe-coding check |
+| Lane | Deliverable có tên | Người (mã HV) | Vibe-coding check |
 |---|---|---|---|
-| PM + Demo | `spec.md`, pitch narrative, 3 câu demo, `canvas.md` | [tên] | Giải thích được §10 impact + §11 khác Trợ lý Kute BTC ở đâu |
-| Backend + Data | `backend/app/*` (Apify adapter, scopes, chat_service, FastAPI) | [tên] | Giải thích được `scopes.py` chặn cross-team thế nào |
-| Memory + Eval | Hindsight bank config, `eval/golden_set.csv`, `run_eval.py`, `quality-bar.md` | [tên] | Giải thích được golden set K02 test cross-team + tại sao bar 100% no-leak |
-| Frontend + QA | `frontend/src/*` (landing pitch, chat-shell, Discord UI) | [tên] | Giải thích được panel scope hiển thị gì + tại sao |
+| PM + Frontend lead | `spec.md`, `canvas.md`, pitch narrative, orchestration frontend | **Nguyễn Hữu Tuyến** (2A202601520) | Giải thích được §10 impact table + §2 lát cắt pivot lý do |
+| Agent Design (Backend + AI) | `backend/app/chat_service.py`, extraction prompt, guardrails (K03 câu đùa filter), `scopes.py` | **Thái Hoài An** (2A202601862) | Giải thích được cây quyết định phân class task/decision/deadline/noise + guard code chặn auto-write |
+| Scraw dữ liệu + Eval | Apify adapter, scripts crawl Discord, `eval/golden_set.csv`, `eval/run_eval.py`, `quality-bar.md` | **Vũ Thành Khang** (2A202601866) + **Trịnh Bá Khánh Trình** (2A202601531) | Giải thích được cơ cấu golden set K03 FP + K05 cross-team + tại sao bar 100% no-auto-write |
+| Frontend UI | `frontend/src/*` — chat shell, candidate card confirm/reject, sync view | **Nguyễn Văn Phúc** (2A202601350) | Giải thích được flow UI: chat → card đề xuất → ✓/✗ → sync → notify |
 
-### Willing users (≥3 tên)
+### Willing users (≥3 tên — đã có từ interview)
 
-| # | Tên/vai | Cohort/team | Ngày đồng ý | DM ref |
-|---|---|---|---|---|
-| 1 | [tên] | K4 · T[xxx] | [ngày] | [Discord username] |
-| 2 | [tên] | | | |
-| 3 | [tên] | | | |
+| # | Tên/vai | Mã HV | Cohort | Ngày đồng ý | Nguồn |
+|---|---|---|---|---|---|
+| 1 | **Nguyễn Văn Tuấn** | U01246 | K4 | 2026-07-30 | Interview 3 — "Mình thấy hợp lý" + xin feature 2-way sync |
+| 2 | **Senior/Mentor** *(cần điền tên đầy đủ)* | *(mentor không có mã HV)* | K4 | 2026-07-30 | Interview 4 — "đáng thử" + warning về false positive |
+| 3 | **Lợi** *(cần điền họ tên đầy đủ + mã HV)* | *(cần điền)* | K4 | 2026-07-31 | Interview 5 — "sẽ sử dụng" + "sẽ quay lại Discord" |
+| *bonus* | Đào Hoàng Duy | U01780 | K4 | *(không cam kết)* | Interview 1 — user Trello, có thể là **contra-user** để test bot có kéo được không |
+| *bonus* | Đức Minh | U01306 | K4 | *(lukewarm)* | Interview 2 — test cho segment "team nhỏ không cảm thấy cần" |
 
 ### Kế hoạch validation CP5
 
-- 5 người × 10 phút/phiên tại `validation/user-test-log.md`
-- Task: bấm "Bắt kịp 24h" + hỏi 1 câu cross-team (kỳ vọng 403) + confirm 1 memory
-- 3 câu chuẩn: khó hiểu nhất? tin không vì sao? có dùng thật không?
-- Ai log: [tên]
+- 5 người × 10 phút/phiên tại `validation/user-test-log.md` — ưu tiên 3 willing users ở trên (Tuấn, Mentor, Lợi) + 2 người zone khác.
+- **Task giao thật (không thuyết minh):**
+  1. Team T004 mẫu chat 5 message (mix: 2 task rõ, 1 câu đùa, 1 task thiếu owner, 1 decision) → user xem bot đề xuất → confirm/reject.
+  2. Chat 1 message "@Minh deploy trước tối mai" với Minh không thuộc team → user xem bot xử lý (kỳ vọng: warning, không auto-confirm).
+  3. User bấm ✗ 1 candidate → xem đã ghi feedback chưa.
+- **3 câu chuẩn:** khó hiểu nhất? tin không vì sao? có dùng thật không?
+- **Metric quan sát:** user có bấm confirm khi bot đúng không? user có bực khi bot propose câu đùa không?
+- Ai log: [tên phụ trách demo/validation]
