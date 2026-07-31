@@ -1,6 +1,8 @@
 from argparse import ArgumentParser
+from datetime import datetime
 import json
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -14,6 +16,7 @@ CHANNEL_SCOPE = {
     "qa": "cohort:K4",
     "bot-commands": "cohort:K4",
 }
+VIETNAM_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
 def read_jsonl(path: Path) -> list[dict]:
@@ -21,6 +24,15 @@ def read_jsonl(path: Path) -> list[dict]:
         raise FileNotFoundError(path)
     with path.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
+
+
+def localized_timestamp(value: str | None) -> datetime | None:
+    """Treat crawler timestamps without an offset as Vietnam local time."""
+    if not value:
+        return None
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(normalized)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=VIETNAM_TZ)
 
 
 def import_processed(processed_dir: Path) -> dict:
@@ -46,6 +58,7 @@ def import_processed(processed_dir: Path) -> dict:
                     %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 ON CONFLICT (message_key) DO UPDATE SET
+                    created_at = EXCLUDED.created_at,
                     content_clean = EXCLUDED.content_clean,
                     content_search = EXCLUDED.content_search,
                     content_model = EXCLUDED.content_model,
@@ -61,7 +74,8 @@ def import_processed(processed_dir: Path) -> dict:
                         row["message_key"], row["source_file"], row["source_sheet"],
                         row["source_row"], row["channel_key"],
                         CHANNEL_SCOPE.get(row["channel_key"], "cohort:K4"),
-                        row["reporter_key"], row.get("author_name"), row.get("created_at") or None,
+                        row["reporter_key"], row.get("author_name"),
+                        localized_timestamp(row.get("created_at")),
                         row["content_original"], row["content_clean"], row["content_search"],
                         row["content_model"], Jsonb({key: row[key] for key in (
                             "is_dot_noise", "is_greeting", "is_acknowledgement", "is_bot",
@@ -85,6 +99,8 @@ def import_processed(processed_dir: Path) -> dict:
                     %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 ON CONFLICT (episode_id) DO UPDATE SET
+                    start_time = EXCLUDED.start_time,
+                    end_time = EXCLUDED.end_time,
                     canonical_problem = EXCLUDED.canonical_problem,
                     answer_summary = EXCLUDED.answer_summary,
                     resolution_status = EXCLUDED.resolution_status,
@@ -95,7 +111,9 @@ def import_processed(processed_dir: Path) -> dict:
                     (
                         row["episode_id"], row["reporter_key"], row["channel_key"],
                         CHANNEL_SCOPE.get(row["channel_key"], "cohort:K4"),
-                        row["start_time"], row["end_time"], row["canonical_problem"],
+                        localized_timestamp(row.get("start_time")),
+                        localized_timestamp(row.get("end_time")),
+                        row["canonical_problem"],
                         row["product_area"], Jsonb(row["entities"]), row.get("answer_summary"),
                         row["resolution_status"], row.get("time_to_first_answer"),
                         Jsonb(row["attachment_summary"]), row["reaction_count"],
@@ -116,6 +134,8 @@ def import_processed(processed_dir: Path) -> dict:
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 ON CONFLICT (painpoint_cluster_id) DO UPDATE SET
+                    first_seen = EXCLUDED.first_seen,
+                    last_seen = EXCLUDED.last_seen,
                     painpoint_title = EXCLUDED.painpoint_title,
                     episode_count = EXCLUDED.episode_count,
                     unique_reporters = EXCLUDED.unique_reporters,
@@ -126,8 +146,10 @@ def import_processed(processed_dir: Path) -> dict:
                 [
                     (
                         row["painpoint_cluster_id"], row["painpoint_title"], "cohort:K4",
-                        row["episode_count"], row["unique_reporters"], row["first_seen"],
-                        row["last_seen"], row["unresolved_rate"],
+                        row["episode_count"], row["unique_reporters"],
+                        localized_timestamp(row.get("first_seen")),
+                        localized_timestamp(row.get("last_seen")),
+                        row["unresolved_rate"],
                         row.get("median_time_to_first_answer"),
                         Jsonb(row["representative_examples"]), row.get("known_resolution"),
                         row["affected_area"], Jsonb(row["evidence_rows"]), Jsonb(row),

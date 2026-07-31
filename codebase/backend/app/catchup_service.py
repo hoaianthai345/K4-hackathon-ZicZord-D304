@@ -1,17 +1,20 @@
 from datetime import UTC, datetime, timedelta
 import hashlib
 import re
+from urllib.parse import quote
 
+from .database import Database
 from .llm_gateway import LLMGateway
 from .schemas import (
     CatchupBrief,
     CatchupItem,
+    CatchupScope,
     ChecklistItem,
     Citation,
     CommunityUser,
     DiscordMessage,
 )
-from .scopes import can_access_channel, channel_record
+from .scopes import allowed_scope_keys, can_access_channel, channel_record
 from .store import JsonStore
 
 
@@ -26,7 +29,10 @@ BLOCKER_RE = re.compile(
 )
 RESOLVED_RE = re.compile(r"\b(?:đã xử lý|đã xong|resolved|ổn rồi|fix xong)\b", re.I)
 OWNER_RE = re.compile(
-    r"\b(An|Dũng|Phong|Châu|Lan|mentor|team)\s+(?:phụ trách|làm|giữ|chuẩn bị|cần)",
+    (
+        r"\b(An|Tuyến|Khang|Trình|Phúc|Dũng|Phong|Châu|Lan|mentor|team)\s+"
+        r"(?:phụ trách|làm|giữ|chuẩn bị|cần)"
+    ),
     re.I,
 )
 TIME_RE = re.compile(
@@ -34,6 +40,15 @@ TIME_RE = re.compile(
     r"\bthứ\s+(?:hai|ba|tư|năm|sáu|bảy|2|3|4|5|6|7)\b)",
     re.I,
 )
+CHANNEL_ID_BY_KEY = {
+    "common": "general",
+    "qa": "qa",
+    "sharing": "sharing",
+    "share": "sharing",
+    "announcement": "announcements",
+    "announcements": "announcements",
+    "bot-commands": "bot-commands",
+}
 
 
 def _now() -> datetime:
@@ -46,9 +61,17 @@ def _key(*values: str) -> str:
 
 
 class CatchupService:
-    def __init__(self, store: JsonStore, llm: LLMGateway | None = None):
+    def __init__(
+        self,
+        store: JsonStore,
+        llm: LLMGateway | None = None,
+        database: Database | None = None,
+        api_public_url: str = "http://localhost:8000",
+    ):
         self.store = store
         self.llm = llm
+        self.database = database
+        self.api_public_url = api_public_url.rstrip("/")
 
     @staticmethod
     def _citation(message: DiscordMessage) -> Citation:
@@ -62,22 +85,109 @@ class CatchupService:
             permalink=message.permalink,
         )
 
-    def _visible_messages(
+    async def _visible_messages(
         self,
         user: CommunityUser,
         window_hours: int,
+        scope: CatchupScope,
+        source_message_ids: set[str] | None = None,
     ) -> list[DiscordMessage]:
         cutoff = _now() - timedelta(hours=window_hours)
         visible: list[DiscordMessage] = []
-        for raw in self.store.snapshot()["discord_messages"]:
-            message = DiscordMessage.model_validate(raw)
-            channel = channel_record(message.channel_id)
-            if (
-                channel
-                and can_access_channel(user, channel)
-                and message.created_at >= cutoff
-            ):
-                visible.append(message)
+        use_database = (
+            source_message_ids is None
+            and self.database is not None
+            and self.database.configured
+        )
+        if not use_database:
+            for raw in self.store.snapshot()["discord_messages"]:
+                message = DiscordMessage.model_validate(raw)
+                channel = channel_record(message.channel_id)
+                if (
+                    channel
+                    and can_access_channel(user, channel)
+                    and message.created_at >= cutoff
+                    and (
+                        scope == "all_allowed"
+                        or (
+                            channel.kind == "team"
+                            and user.team_id is not None
+                            and channel.scope_id == user.team_id
+                        )
+                    )
+                    and (
+                        source_message_ids is None
+                        or message.id in source_message_ids
+                    )
+                ):
+                    visible.append(message)
+
+        # The curated pitch flow deliberately passes explicit snapshot IDs. The
+        # regular catch-up flow reads the complete authorized PostgreSQL window.
+        if use_database:
+            scope_keys = (
+                [f"team:{user.team_id}"]
+                if scope == "team" and user.team_id
+                else [
+                    f"{scope_type}:{scope_id}"
+                    for scope_type, scope_id in sorted(allowed_scope_keys(user))
+                ]
+            )
+            rows = await self.database.recent_messages(
+                scope_keys,
+                start_time=cutoff,
+            )
+            for row in rows:
+                source_id = str(row["source_id"])
+                channel_id = CHANNEL_ID_BY_KEY.get(
+                    str(row["channel_key"]),
+                    str(row["channel_key"]),
+                )
+                visible.append(
+                    DiscordMessage(
+                        id=source_id,
+                        source_message_id=source_id,
+                        channel_id=channel_id,
+                        author_id=str(row["reporter_key"]),
+                        author_name=str(row["author_name"]),
+                        content=str(row["content"]),
+                        created_at=row["created_at"],
+                        permalink=(
+                            f"{self.api_public_url}/api/rag/sources/message/"
+                            f"{quote(source_id, safe='')}?user_id={quote(user.id, safe='')}"
+                        ),
+                        source="apify",
+                    )
+                )
+            events = await self.database.recent_learning_events(
+                scope_keys,
+                start_time=cutoff,
+            )
+            for row in events:
+                source_id = str(row["source_id"])
+                channel_id = CHANNEL_ID_BY_KEY.get(
+                    str(row["channel_key"]),
+                    "announcements",
+                )
+                visible.append(
+                    DiscordMessage(
+                        id=source_id,
+                        source_message_id=source_id,
+                        channel_id=channel_id,
+                        author_id="official-context",
+                        author_name="Nguồn chính thức",
+                        content=f"{row['title']}\n{row['content']}",
+                        created_at=row["created_at"],
+                        permalink=(
+                            f"{self.api_public_url}/api/rag/sources/lesson/"
+                            f"{quote(source_id, safe='')}?user_id={quote(user.id, safe='')}"
+                        ),
+                        source="demo",
+                    )
+                )
+
+        visible_by_id = {message.id: message for message in visible}
+        visible = list(visible_by_id.values())
         return sorted(visible, key=lambda item: item.created_at, reverse=True)
 
     @staticmethod
@@ -118,8 +228,18 @@ class CatchupService:
         self,
         user: CommunityUser,
         window_hours: int = 24,
+        scope: CatchupScope = "all_allowed",
+        *,
+        source_message_ids: set[str] | None = None,
     ) -> CatchupBrief:
-        messages = self._visible_messages(user, window_hours)
+        if scope == "team" and not user.team_id:
+            raise ValueError("Tài khoản này không thuộc team nào.")
+        messages = await self._visible_messages(
+            user,
+            window_hours,
+            scope,
+            source_message_ids,
+        )
         items: list[CatchupItem] = []
         seen: set[tuple[str, str]] = set()
         limits = {"decision": 2, "task": 3, "blocker": 2, "announcement": 2}
@@ -136,6 +256,11 @@ class CatchupService:
                 if not message:
                     continue
                 kind = selected["kind"]
+                # A model selection must still pass the deterministic action-signal
+                # gate. This prevents casual messages containing words such as
+                # "deploy" from appearing in a pitch brief.
+                if self._kind(message) is None:
+                    continue
                 counts[kind] += 1
                 items.append(
                     CatchupItem(
@@ -180,7 +305,10 @@ class CatchupService:
         items.sort(key=lambda item: (order[item.kind], item.status == "resolved"))
         source_ids = {citation.message_id for item in items for citation in item.citations}
         channel_ids = {citation.channel_id for item in items for citation in item.citations}
-        brief_id = f"brief-{_key(user.id, str(window_hours), *sorted(source_ids))}"
+        scope_key = f"team:{user.team_id}" if scope == "team" else "all_allowed"
+        brief_id = (
+            f"brief-{_key(user.id, scope_key, str(window_hours), *sorted(source_ids))}"
+        )
         acknowledged = brief_id in self.store.snapshot()["acknowledged_briefs"].get(user.id, [])
         summary_parts = [
             f"{counts['decision']} quyết định",
@@ -191,6 +319,7 @@ class CatchupService:
         brief = CatchupBrief(
             id=brief_id,
             user_id=user.id,
+            scope_key=scope_key,
             window_hours=window_hours,
             generated_at=_now(),
             source_message_count=len(source_ids),

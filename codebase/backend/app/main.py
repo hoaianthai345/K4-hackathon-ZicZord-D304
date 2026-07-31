@@ -85,7 +85,12 @@ database = Database(settings)
 rag = RAGAnythingGateway(settings)
 context_tools = ContextToolService(database)
 chat_service = ChatService(store, hindsight, llm, rag, context_tools)
-catchup_service = CatchupService(store, llm)
+catchup_service = CatchupService(
+    store,
+    llm,
+    database,
+    settings.api_public_url,
+)
 evaluation = EvaluationService(settings, chat_service)
 telegram_gateway = TelegramGateway(settings)
 telegram_service = TelegramService(
@@ -255,6 +260,7 @@ def discord_state(user_id: str = Query(default="U01862")) -> DiscordState:
         candidates=candidates,
         assistant_messages=snapshot["assistant_messages"].get(user_id, []),
         suggested_prompts=[
+            "Bắt kịp 24 giờ qua",
             "Quyết định nào mới được chốt?",
             "Việc nào đang giao cho mình?",
             "Deadline và blocker hiện tại là gì?",
@@ -685,7 +691,14 @@ async def admin_delete_memory(
 @app.post("/api/catch-up", response_model=CatchupBrief)
 async def create_catchup(payload: CatchupRequest) -> CatchupBrief:
     user = get_user(payload.user_id)
-    return await catchup_service.generate(user, payload.window_hours)
+    try:
+        return await catchup_service.generate(
+            user,
+            payload.window_hours,
+            payload.scope,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post(

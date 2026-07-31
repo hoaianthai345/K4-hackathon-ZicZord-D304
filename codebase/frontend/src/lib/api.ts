@@ -3,6 +3,7 @@ import type {
   AdminEvaluation,
   AdminMemoryInput,
   AdminOverview,
+  CatchupBrief,
   ChatResponse,
   ContextPlanResponse,
   DiscordState,
@@ -80,6 +81,20 @@ export function sendChat(
       message,
       channel_id: channelId,
       profile_id: profileId,
+    }),
+  });
+}
+
+export function createCatchup(
+  userId: string,
+  windowHours = 24,
+): Promise<CatchupBrief> {
+  return apiFetch("/api/catch-up", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId,
+      window_hours: windowHours,
+      scope: "all_allowed",
     }),
   });
 }

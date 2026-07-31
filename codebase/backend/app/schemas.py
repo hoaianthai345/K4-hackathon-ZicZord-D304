@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 ScopeType = Literal["user", "team", "group", "room", "cohort"]
 MemoryKind = Literal["decision", "task", "blocker", "preference", "learning_note"]
 CatchupKind = Literal["decision", "task", "blocker", "announcement"]
+CatchupScope = Literal["all_allowed", "team"]
 
 
 class CommunityUser(BaseModel):
@@ -202,6 +203,7 @@ class CatchupItem(BaseModel):
 class CatchupBrief(BaseModel):
     id: str
     user_id: str
+    scope_key: str = "all_allowed"
     window_hours: int
     generated_at: datetime
     source_message_count: int
@@ -215,6 +217,7 @@ class CatchupBrief(BaseModel):
 class CatchupRequest(BaseModel):
     user_id: str
     window_hours: int = Field(default=24, ge=1, le=168)
+    scope: CatchupScope = "all_allowed"
 
 
 class ChecklistItem(BaseModel):

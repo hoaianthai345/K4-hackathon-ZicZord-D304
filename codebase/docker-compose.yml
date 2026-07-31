@@ -167,6 +167,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-kute}:${POSTGRES_PASSWORD:-kute_demo}@postgres:5432/${POSTGRES_DB:-kute}
     volumes:
       - ../data/vlearn-pack:/data/vlearn-pack:ro
+      - ../:/repo:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -176,6 +177,8 @@ services:
       - app.learning_ingest
       - --pack-root
       - /data/vlearn-pack
+      - --competition-root
+      - /repo
 
   hindsight:
     profiles: ["hindsight"]

@@ -15,7 +15,7 @@ def split_order(value: str) -> list[str]:
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "ZicZord Discord Catch-up Copilot API"
-    app_version: str = "0.5.0"
+    app_version: str = "0.6.0"
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
     memory_provider: str = os.getenv("MEMORY_PROVIDER", "local").lower()
     hindsight_base_url: str = os.getenv("HINDSIGHT_BASE_URL", "http://hindsight:8888")

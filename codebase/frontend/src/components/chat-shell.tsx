@@ -23,6 +23,7 @@ import ReactMarkdown from "react-markdown";
 
 import {
   confirmCandidate,
+  createCatchup,
   createLearnerProfile,
   deleteMemory,
   getDiscordState,
@@ -32,6 +33,7 @@ import {
 } from "@/lib/api";
 import type {
   AssistantMessage,
+  CatchupBrief,
   DiscordMessage,
   DiscordState,
   LearnerProfile,
@@ -57,6 +59,13 @@ const SCOPE_LABELS: Record<ScopeType, string> = {
   group: "Group",
   room: "Phòng học",
   cohort: "Cộng đồng",
+};
+
+const BRIEF_LABELS = {
+  decision: "Quyết định",
+  task: "Việc cần làm",
+  blocker: "Blocker",
+  announcement: "Thông báo",
 };
 
 function initials(name: string) {
@@ -373,6 +382,79 @@ function MemoryCard({
   );
 }
 
+function CatchupPanel({ brief }: { brief: CatchupBrief }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-4 mb-5 overflow-hidden rounded-2xl border border-line bg-surface/70"
+      aria-labelledby="catchup-title"
+    >
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-4">
+        <div>
+          <p className="eyebrow text-accent-strong">Bản cập nhật có nguồn</p>
+          <h3 id="catchup-title" className="mt-1 text-base font-bold">
+            Bạn cần biết · 24 giờ qua
+          </h3>
+          <p className="mt-1 text-xs text-muted">
+            {brief.summary} · {brief.source_message_count} nguồn · {brief.provider}
+          </p>
+        </div>
+        <span className="safe-badge">
+          <ShieldCheck size={13} weight="fill" />
+          Đúng scope
+        </span>
+      </header>
+      <div className="space-y-3 p-4">
+        {brief.items.length === 0 && (
+          <p className="rounded-xl border border-line bg-paper p-4 text-sm text-muted">
+            Chưa có quyết định, task, blocker hoặc thông báo đủ bằng chứng trong cửa sổ này.
+          </p>
+        )}
+        {brief.items.map((item) => (
+          <article
+            key={item.id}
+            className="rounded-xl border border-line bg-paper p-3.5"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="scope-chip scope-chip-team">
+                {BRIEF_LABELS[item.kind]}
+              </span>
+              {item.owner && (
+                <span className="text-[11px] font-semibold text-muted">
+                  Owner · {item.owner}
+                </span>
+              )}
+              {item.deadline && (
+                <span className="text-[11px] font-semibold text-danger">
+                  {item.deadline}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-sm font-bold leading-5">{item.title}</p>
+            <p className="mt-1 text-xs leading-5 text-muted">{item.detail}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {item.citations.map((citation) => (
+                <a
+                  key={citation.message_id}
+                  href={citation.permalink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="citation-chip"
+                >
+                  <Hash size={12} weight="bold" />
+                  #{citation.channel_name}
+                  <ArrowSquareOut size={11} />
+                </a>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
 export function ChatShell({ compact = false }: { compact?: boolean }) {
   const [state, setState] = useState<DiscordState | null>(null);
   const [profile, setProfile] = useState<LearnerProfile | null>(null);
@@ -386,6 +468,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [memoryBusy, setMemoryBusy] = useState(false);
+  const [catchupBrief, setCatchupBrief] = useState<CatchupBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const optimisticCounter = useRef(0);
@@ -469,7 +552,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     if (activeChannel === "bot-commands") {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [state?.assistant_messages, candidate, sending, activeChannel]);
+  }, [state?.assistant_messages, candidate, sending, activeChannel, catchupBrief]);
 
   async function submitLearnerProfile(fullName: string, studentIdLast5: string) {
     setProfileSubmitting(true);
@@ -515,7 +598,20 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     setInput("");
     setSending(true);
     setError(null);
+    setCatchupBrief(null);
     try {
+      const normalizedMessage = message
+        .normalize("NFC")
+        .toLocaleLowerCase("vi-VN");
+      if (
+        normalizedMessage.includes("bắt kịp")
+        && normalizedMessage.includes("24")
+      ) {
+        const brief = await createCatchup(activeUser, 24);
+        setCatchupBrief(brief);
+        setCandidate(null);
+        return;
+      }
       const response = await sendChat(
         activeUser,
         message,
@@ -584,6 +680,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
     setMemoryBusy(true);
     try {
       await resetDemo();
+      setCatchupBrief(null);
       await reload(activeUser);
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : "Không reset được demo.");
@@ -701,6 +798,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
                   onChange={(event) => {
                     setLoading(true);
                     setActiveChannel("bot-commands");
+                    setCatchupBrief(null);
                     setActiveUser(event.target.value);
                   }}
                 >
@@ -757,6 +855,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
               {state?.assistant_messages.map((message) => (
                 <AssistantTurn key={message.id} message={message} />
               ))}
+              {catchupBrief && <CatchupPanel brief={catchupBrief} />}
               {sending && (
                 <div className="discord-turn" role="status">
                   <ZicZordAvatar />

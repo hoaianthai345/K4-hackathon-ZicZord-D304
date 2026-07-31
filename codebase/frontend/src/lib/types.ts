@@ -145,6 +145,31 @@ export type ChatResponse = {
     tool_calls: ContextToolCall[];
 };
 
+export type CatchupItem = {
+  id: string;
+  kind: "decision" | "task" | "blocker" | "announcement";
+  title: string;
+  detail: string;
+  owner: string | null;
+  deadline: string | null;
+  status: "open" | "resolved" | "unknown";
+  citations: Citation[];
+};
+
+export type CatchupBrief = {
+  id: string;
+  user_id: string;
+  scope_key: string;
+  window_hours: number;
+  generated_at: string;
+  source_message_count: number;
+  channel_count: number;
+  summary: string;
+  items: CatchupItem[];
+  acknowledged: boolean;
+  provider: string;
+};
+
 export type ContextToolCall = {
   name: string;
   arguments: Record<string, unknown>;

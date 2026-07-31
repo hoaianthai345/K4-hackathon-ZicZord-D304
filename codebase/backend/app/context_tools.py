@@ -41,6 +41,15 @@ LESSON_TERMS = (
     "xác định bài toán",
     "tự động hoá",
     "tự động hóa",
+    "workshop",
+    "coaching",
+    "hackathon",
+    "mini hackathon",
+    "cuộc thi",
+    "the le",
+    "thể lệ",
+    "rubric",
+    "checkpoint",
 )
 PROBLEM_TERMS = (
     "vì sao",
@@ -126,6 +135,26 @@ class ContextToolService:
         if day_match:
             days = min(max(int(day_match.group(1)), 1), 30)
             return now - timedelta(days=days), None, f"{days} ngày qua"
+        date_match = re.search(
+            r"\b(?:ngay\s+)?(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b",
+            value,
+        )
+        if date_match:
+            day = int(date_match.group(1))
+            month = int(date_match.group(2))
+            raw_year = date_match.group(3)
+            year = int(raw_year) if raw_year else local_now.year
+            if year < 100:
+                year += 2000
+            try:
+                start_local = datetime(year, month, day, tzinfo=VIETNAM_TZ)
+            except ValueError:
+                return None, None, None
+            return (
+                start_local.astimezone(UTC),
+                (start_local + timedelta(days=1)).astimezone(UTC),
+                f"ngày {day:02d}/{month:02d}/{year}",
+            )
         return None, None, None
 
     @staticmethod
@@ -209,11 +238,17 @@ class ContextToolService:
             values.append("transformer-attention")
         if any(term in value for term in ("danh gia", "du lieu")):
             values.append("problem-evaluation-data")
+        if any(term in value for term in ("hackathon", "mini hackathon", "cuoc thi", "the le", "rubric")):
+            values.append("mini-hackathon-2026")
         return list(dict.fromkeys(values))
 
     @staticmethod
     def _source_kinds(query: str) -> list[str]:
         value = normalize(query)
+        if any(term in value for term in ("workshop", "coaching")):
+            return ["event_brief", "workshop_transcript"]
+        if any(term in value for term in ("hackathon", "mini hackathon", "cuoc thi", "the le", "rubric")):
+            return ["competition_rule"]
         if "slide" in value:
             return ["slide"]
         if "transcript" in value or "giang vien noi" in value:
@@ -242,11 +277,19 @@ class ContextToolService:
             "như thế nào",
             "nhu the nao",
             "tóm tắt",
+            "bắt kịp",
+            "bat kip",
             "cho mình",
             "giúp mình",
         )
         for phrase in removable:
             value = re.sub(re.escape(phrase), " ", value, flags=re.IGNORECASE)
+        value = re.sub(
+            r"\b(?:ngày|ngay)?\s*\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b",
+            " ",
+            value,
+            flags=re.IGNORECASE,
+        )
         return re.sub(r"\s+", " ", value).strip()
 
     def plan(
@@ -279,12 +322,20 @@ class ContextToolService:
         explicit_channel = bool(channel_keys)
         strict_filter = bool(start_time or explicit_channel)
         day_codes = self._day_codes(query)
+        if "workshop" in normalized_query and start_time:
+            workshop_date = start_time.astimezone(VIETNAM_TZ).date().isoformat()
+            day_codes.append(f"workshop-{workshop_date}")
+            day_codes = list(dict.fromkeys(day_codes))
         source_kinds = self._source_kinds(query)
         use_rag = any(normalize(term) in normalized_query for term in PROBLEM_TERMS)
         if lesson_intent:
             use_rag = False
         notes: list[str] = []
-        if lesson_intent and time_label:
+        official_event_intent = any(
+            kind in {"event_brief", "workshop_transcript", "competition_rule"}
+            for kind in source_kinds
+        )
+        if lesson_intent and time_label and not official_event_intent:
             notes.append(
                 "Transcript và slide không có timestamp lịch học. Time window chỉ áp dụng "
                 "cho Discord hoặc tutor Q&A có thời gian; day_code được ưu tiên nếu câu hỏi nêu rõ."
@@ -363,7 +414,15 @@ class ContextToolService:
             and discord_channels
             and all(channel.startswith("lecture-") for channel in discord_channels)
         )
-        if plan.strict_discord_filter and not only_lesson_channel:
+        official_event_intent = any(
+            kind in {"event_brief", "workshop_transcript", "competition_rule"}
+            for kind in plan.source_kinds
+        )
+        if (
+            plan.strict_discord_filter
+            and not only_lesson_channel
+            and not official_event_intent
+        ):
             discord_call = ToolCall(
                 name="search_discord_messages",
                 arguments={

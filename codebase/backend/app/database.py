@@ -504,11 +504,20 @@ class Database:
                     OR text_rank > 0
                     OR fuzzy_rank >= 0.12
                 ORDER BY
+                    CASE
+                        WHEN 'event_brief' = ANY(
+                            COALESCE(%s::text[], ARRAY[]::text[])
+                        ) AND source_kind = 'event_brief' THEN 0
+                        ELSE 1
+                    END,
                     (text_rank * 4 + fuzzy_rank) DESC,
                     CASE source_kind
-                        WHEN 'transcript' THEN 1
-                        WHEN 'slide' THEN 2
-                        ELSE 3
+                        WHEN 'event_brief' THEN 1
+                        WHEN 'competition_rule' THEN 2
+                        WHEN 'workshop_transcript' THEN 3
+                        WHEN 'transcript' THEN 4
+                        WHEN 'slide' THEN 5
+                        ELSE 6
                     END,
                     sequence_number NULLS LAST,
                     created_at DESC NULLS LAST
@@ -529,6 +538,7 @@ class Database:
                     end_time,
                     end_time,
                     normalized_query,
+                    source_kinds,
                     limit,
                 ),
             )
@@ -622,6 +632,98 @@ class Database:
                     normalized_query,
                     limit,
                 ),
+            )
+            return list(await cursor.fetchall())
+
+    async def recent_messages(
+        self,
+        scope_keys: list[str],
+        *,
+        start_time,
+        end_time=None,
+        channel_keys: list[str] | None = None,
+        limit: int = 400,
+    ) -> list[dict]:
+        """Return a chronological Discord window without keyword ranking."""
+        if not self.settings.database_url or not scope_keys:
+            return []
+        async with await psycopg.AsyncConnection.connect(
+            self.settings.database_url,
+            row_factory=dict_row,
+        ) as connection:
+            cursor = await connection.execute(
+                """
+                SELECT
+                    message_key AS source_id,
+                    channel_key,
+                    scope_key,
+                    reporter_key,
+                    COALESCE(NULLIF(author_name, ''), reporter_key) AS author_name,
+                    created_at,
+                    content_model AS content,
+                    flags,
+                    reaction_count
+                FROM discord_messages
+                WHERE is_enabled = TRUE
+                    AND scope_key = ANY(%s)
+                    AND created_at >= %s
+                    AND (%s::timestamptz IS NULL OR created_at < %s)
+                    AND (%s::text[] IS NULL OR channel_key = ANY(%s))
+                    AND channel_key <> 'bot-commands'
+                    AND COALESCE(flags->>'is_dot_noise', 'false') <> 'true'
+                    AND COALESCE(flags->>'is_greeting', 'false') <> 'true'
+                    AND COALESCE(flags->>'is_bot', 'false') <> 'true'
+                ORDER BY created_at DESC, message_key DESC
+                LIMIT %s
+                """,
+                (
+                    scope_keys,
+                    start_time,
+                    end_time,
+                    end_time,
+                    channel_keys,
+                    channel_keys,
+                    limit,
+                ),
+            )
+            return list(await cursor.fetchall())
+
+    async def recent_learning_events(
+        self,
+        scope_keys: list[str],
+        *,
+        start_time,
+        end_time=None,
+        limit: int = 12,
+    ) -> list[dict]:
+        """Return official event briefs that belong to the requested time window."""
+        if not self.settings.database_url or not scope_keys:
+            return []
+        async with await psycopg.AsyncConnection.connect(
+            self.settings.database_url,
+            row_factory=dict_row,
+        ) as connection:
+            cursor = await connection.execute(
+                """
+                SELECT
+                    context_id AS source_id,
+                    source_kind,
+                    channel_key,
+                    scope_key,
+                    title,
+                    occurred_at AS created_at,
+                    content_model AS content,
+                    metadata
+                FROM learning_context
+                WHERE is_enabled = TRUE
+                    AND scope_key = ANY(%s)
+                    AND source_kind = 'event_brief'
+                    AND occurred_at >= %s
+                    AND (%s::timestamptz IS NULL OR occurred_at < %s)
+                ORDER BY occurred_at DESC, sequence_number
+                LIMIT %s
+                """,
+                (scope_keys, start_time, end_time, end_time, limit),
             )
             return list(await cursor.fetchall())
 

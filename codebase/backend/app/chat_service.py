@@ -235,7 +235,9 @@ class ChatService:
         source_type = str(source["source_type"])
         source_id = str(source["source_id"])
         channel_key = str(source["channel_key"])
-        if source_type == "lesson":
+        if source_type == "lesson" and channel_key == "announcement":
+            channel_id = "announcements"
+        elif source_type == "lesson":
             room_suffix = (user.lecture_room_id or "LEC-D302").split("-", 1)[-1].casefold()
             channel_id = f"lecture-{room_suffix}"
         else:
