@@ -112,7 +112,9 @@ export function PitchDeck() {
                 <DiscordLogo size={15} weight="fill" />
                 Discord Learning Copilot
               </span>
-              <span className="text-xs font-semibold text-muted">Hackathon · K4</span>
+              <span className="text-xs font-semibold text-muted">
+                Team ZicZord · Hackathon K4
+              </span>
             </div>
             <h1 className="hero-title">
               <span className="block">Discord nhớ đúng.</span>
@@ -153,7 +155,7 @@ export function PitchDeck() {
                 <span />
                 <span />
               </div>
-              <p>Kute Memory · live API</p>
+              <p>ZicZord · live API</p>
               <span className="live-label">
                 <span className="status-dot" />
                 Ready
@@ -183,9 +185,11 @@ export function PitchDeck() {
           <div className="problem-layout">
             <Reveal className="failure-quote">
               <div className="quote-header">
-                <span className="avatar avatar-bot">K</span>
+                <span className="avatar avatar-bot">Z</span>
                 <div>
-                  <p className="font-bold text-accent-strong">Trợ lý Kute <span className="bot-badge">APP</span></p>
+                  <p className="font-bold text-accent-strong">
+                    Trợ lý ZicZord <span className="bot-badge">APP</span>
+                  </p>
                   <p className="text-xs text-muted">trong #💬-chung</p>
                 </div>
               </div>

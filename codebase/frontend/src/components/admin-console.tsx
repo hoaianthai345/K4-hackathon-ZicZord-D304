@@ -427,7 +427,7 @@ export function AdminConsole() {
       <section className="admin-workspace">
         <header className="admin-topbar">
           <div>
-            <p className="admin-page-label">Kute operations</p>
+            <p className="admin-page-label">ZicZord operations</p>
             <h1>
               {panel === "evaluation"
                 ? "AI evaluation"

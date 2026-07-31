@@ -129,10 +129,10 @@ function LearnerGate({
         </span>
         {checking ? (
           <div role="status">
-            <p className="eyebrow text-accent-strong">Trợ lý Kute</p>
+            <p className="eyebrow text-accent-strong">Trợ lý ZicZord</p>
             <h1 id="learner-gate-title">Đang nhận diện bạn</h1>
             <p className="learner-onboarding-copy">
-              Kute đang kiểm tra thông tin đã lưu trên thiết bị này.
+              ZicZord đang kiểm tra thông tin đã lưu trên thiết bị này.
             </p>
             <div className="learner-loading-lines" aria-hidden="true">
               <span className="skeleton" />
@@ -145,7 +145,7 @@ function LearnerGate({
             <p className="eyebrow text-accent-strong">Trước khi bắt đầu</p>
             <h1 id="learner-gate-title">Bạn là ai trong lớp?</h1>
             <p className="learner-onboarding-copy">
-              Thông tin này chỉ dùng để liên kết log hỏi đáp và cải thiện Kute.
+              Thông tin này chỉ dùng để liên kết log hỏi đáp và cải thiện ZicZord.
             </p>
             <form className="learner-form" onSubmit={submitProfile}>
               <label className="learner-field">
@@ -263,6 +263,7 @@ function CandidateCard({
 
 function AssistantTurn({ message }: { message: AssistantMessage }) {
   const assistant = message.role === "assistant";
+  const displayAuthor = assistant ? "Trợ lý ZicZord" : message.author_name;
   return (
     <motion.article
       initial={{ opacity: 0, y: 7 }}
@@ -270,12 +271,12 @@ function AssistantTurn({ message }: { message: AssistantMessage }) {
       className="discord-turn"
     >
       <span className={assistant ? "avatar avatar-bot" : "avatar avatar-user"}>
-        {assistant ? "K" : initials(message.author_name)}
+        {assistant ? "Z" : initials(message.author_name)}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <p className={assistant ? "message-author text-accent-strong" : "message-author"}>
-            {message.author_name}
+            {displayAuthor}
           </p>
           {assistant && <span className="bot-badge">APP</span>}
           <time className="message-time">vừa xong</time>
@@ -745,9 +746,9 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
                 <span className="channel-intro-icon">
                   <Sparkle size={23} weight="fill" />
                 </span>
-                <h2>Trợ lý Kute đã vào phòng.</h2>
+                <h2>Trợ lý ZicZord đã vào phòng.</h2>
                 <p>
-                  Kute đọc nguồn Discord đã cấp quyền, sau đó recall memory đúng user và đúng nhóm.
+                  ZicZord đọc nguồn Discord đã cấp quyền, sau đó recall memory đúng user và đúng nhóm.
                 </p>
               </div>
               {state?.assistant_messages.map((message) => (
@@ -755,9 +756,9 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
               ))}
               {sending && (
                 <div className="discord-turn" role="status">
-                  <span className="avatar avatar-bot">K</span>
+                  <span className="avatar avatar-bot">Z</span>
                   <div>
-                    <p className="message-author text-accent-strong">Trợ lý Kute</p>
+                    <p className="message-author text-accent-strong">Trợ lý ZicZord</p>
                     <div className="mt-2 flex gap-1.5">
                       <span className="thinking-dot" />
                       <span className="thinking-dot" />
@@ -795,7 +796,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
                   className="button-secondary button-small mt-4"
                 >
                   <Sparkle size={14} weight="fill" />
-                  Nhờ Kute tóm tắt kênh này
+                  Nhờ ZicZord tóm tắt kênh này
                 </button>
               </div>
               {sourceMessages.length > 0 ? (
@@ -838,7 +839,7 @@ export function ChatShell({ compact = false }: { compact?: boolean }) {
               className="chat-input"
               placeholder={
                 activeChannel === "bot-commands"
-                  ? "Nhắn @Trợ lý Kute..."
+                  ? "Nhắn @Trợ lý ZicZord..."
                   : `Đang xem #${currentChannel?.name}`
               }
               aria-label="Tin nhắn"

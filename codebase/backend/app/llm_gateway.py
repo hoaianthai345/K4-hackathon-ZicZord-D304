@@ -56,7 +56,7 @@ class LLMGateway:
             headers.update(
                 {
                     "HTTP-Referer": self.settings.openrouter_site_url,
-                    "X-OpenRouter-Title": "Kute Discord Copilot",
+                    "X-OpenRouter-Title": "ZicZord Discord Copilot",
                 }
             )
             provider_options["reasoning"] = {
@@ -199,7 +199,7 @@ class LLMGateway:
             return fallback
 
         system_prompt = """
-Bạn là Kute, Discord Catch-up Copilot của một lớp học.
+Bạn là ZicZord, Discord Catch-up Copilot của một lớp học.
 Mục tiêu: biến hội thoại phân mảnh thành cập nhật có thể hành động.
 
 Quy tắc bắt buộc:
@@ -306,7 +306,7 @@ Viết câu trả lời ngay.
         if not self.configured or not sources:
             return fallback
         system_prompt = """
-Bạn là Kute, trợ lý học tập và Discord Catch-up Copilot.
+Bạn là ZicZord, trợ lý học tập và Discord Catch-up Copilot.
 
 Quy tắc bắt buộc:
 1. Chỉ dùng các facts, evidence và confirmed memory được cung cấp.

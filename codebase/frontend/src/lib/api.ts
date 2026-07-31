@@ -29,7 +29,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       .json()
       .then((body) => body.detail)
       .catch(() => null);
-    throw new Error(detail ?? "Không thể kết nối Trợ lý Kute.");
+    throw new Error(detail ?? "Không thể kết nối Trợ lý ZicZord.");
   }
 
   if (response.status === 204) return undefined as T;

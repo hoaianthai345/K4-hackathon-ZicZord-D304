@@ -1,1 +1,1 @@
-"""Non-destructive Discord export processing for the Kute demo."""
+"""Non-destructive Discord export processing for the ZicZord demo."""

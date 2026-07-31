@@ -1,4 +1,4 @@
-# Kute evaluation suite
+# ZicZord evaluation suite
 
 Bộ eval kiểm tra một AI decision cụ thể:
 

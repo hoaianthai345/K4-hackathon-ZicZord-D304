@@ -8,7 +8,7 @@ from .schemas import IndexRequest, IndexResponse, QueryRequest, QueryResponse
 
 
 registry = EngineRegistry()
-app = FastAPI(title="Kute RAG-Anything Service", version="0.1.0")
+app = FastAPI(title="ZicZord RAG-Anything Service", version="0.1.0")
 
 
 @app.get("/health")

@@ -1,4 +1,4 @@
-# AI SPEC: Kute, Discord Action-Item Copilot
+# AI SPEC: ZicZord, Discord Action-Item Copilot
 
 Hướng đề xuất: **Discord Action-Item Copilot — bot đọc chat team, đề xuất task/deadline/decision, đồng bộ 1-click sang task tool** (Hướng B — Trợ lý Học viên)
 Loại: **Tính năng mới**
@@ -220,7 +220,7 @@ membership.
 
 1. Học viên bấm một channel trong sidebar.
 2. Giao diện hiện Discord snapshot ở chế độ chỉ đọc.
-3. Bấm `Nhờ Kute tóm tắt kênh này`.
+3. Bấm `Nhờ ZicZord tóm tắt kênh này`.
 4. Trợ lý quay về command channel và trả lời có nguồn.
 
 ### Tạo memory

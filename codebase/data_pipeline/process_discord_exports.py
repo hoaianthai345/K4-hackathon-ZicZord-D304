@@ -595,7 +595,7 @@ def llm_cluster_title(cluster_episodes: list[dict], fallback: str, model: str) -
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "http://localhost:3000",
-            "X-OpenRouter-Title": "Kute Dataset Pipeline",
+            "X-OpenRouter-Title": "ZicZord Dataset Pipeline",
         },
         method="POST",
     )

@@ -1,4 +1,4 @@
-# Kute Catch-up MVP
+# ZicZord Catch-up MVP
 
 Discord Catch-up Copilot cho lớp K4:
 

@@ -108,7 +108,7 @@ def build_result(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Kute evaluation suite.")
+    parser = argparse.ArgumentParser(description="Run ZicZord evaluation suite.")
     parser.add_argument("--api-url", default="http://127.0.0.1:8000")
     parser.add_argument(
         "--baseline",

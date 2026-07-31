@@ -175,7 +175,7 @@ class EngineRegistry:
                 "Authorization": f"Bearer {slot.value}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": "http://localhost:3000",
-                "X-OpenRouter-Title": "Kute RAG-Anything",
+                "X-OpenRouter-Title": "ZicZord RAG-Anything",
             }
             try:
                 async with httpx.AsyncClient(timeout=90.0) as client:

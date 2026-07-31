@@ -592,7 +592,7 @@ class ChatService:
         assistant_message = AssistantMessage(
             id=f"turn-{uuid4().hex[:10]}",
             role="assistant",
-            author_name="Trợ lý Kute",
+            author_name="Trợ lý ZicZord",
             content=answer,
             citations=citations,
             memory_used=used_ids,
